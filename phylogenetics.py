@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import sys
 import os
 import math
 import numpy as np
@@ -18,6 +19,7 @@ class General():
 	def __init__(self):
 		self.proteinSet = None
 		self.limitsDict = None
+
 
 	def readLimits(self):
 		'''
@@ -167,7 +169,7 @@ def _getTopFromBlast(blastXML, TF, top = 0, exContaminSpecies=True, outfile=None
 						out.write(line + '\n')
 
 
-def XMLtoTSV():
+def parseBlastResults():
 	li = glob('blastresults/*.xml')	### This may be taken from the proteinlist.txt
 
 	#li = ['blastresults/Athaliana_nadA_QS.xml']
@@ -653,3 +655,101 @@ def similarityMatrix():
 		out.write('\t' + '\t'.join(names) + '\n')
 		for i, line in enumerate(res):
 			out.write(names[i] + '\t' + '\t'.join(map(str, line)) + '\n')
+
+
+def heatmap():
+	raise NotImplementedError('The heatmap is not implemented, yet.')
+
+
+def dynHeatmap():
+	raise NotImplementedError('The interactive heatmap is not implemented, yet.')
+
+
+tasknames = ['blast', 'parse', 'combine', 'comheat', 'unique', 'newick', 'attrib', 'hist', 'map', 'heatmap', 'dynheat', 'matrix']
+
+tasks = {'blast': ('run Blast', runBlast),
+'parse': ('parse Blast results', parseBlastResults),
+'combine': ('combine parsed results', combineTSV),
+'comheat': ('combine parsed results for heatmaps', tablesForDynamicHeatmap),
+'unique': ('create unique lists of names and taxids', uniqueNames),
+'newick': ('create Newick tree for each protein', makeNewick),
+'attrib': ('determine tree attributes', treeAttributes),
+'hist': ('create histograms with Blast hits for each protein', makeHistograms),
+'map': ('create hit mapping diagrams for each protein', showBlastMapping),
+'heatmap': ('create a heatmap (image)', heatmap),
+'dynheat': ('create an interactive heatmap (website)', dynHeatmap),
+'matrix': ('create a similarity matrix of all proteins', similarityMatrix)}
+
+
+if __name__ == '__main__':
+	import argparse
+	import textwrap
+
+	workflow = '\n'.join(textwrap.wrap("""The following is a list of the workflow. The names or numbers can be used for the -s or -o arguments.""", width = 80))
+
+	workflow += '\n\n' + '\n'.join(('{:>2}. {:<8} {}'.format(i, name, tasks[name][0]) for i, name in enumerate(tasknames)))
+
+	parser = argparse.ArgumentParser(description='This module provides you with tools to run phylogenetic analyses. Exactly one argument must be given.')
+
+	parser.add_argument('-l', '--list', action='store_true', help='Shows the whole workflow with information and exits')
+	parser.add_argument('-a', '--all', action='store_true', help='Run the full workflow without Blast')
+	parser.add_argument('-b', '--blast', action='store_true', help='Run the full workflow including Blast')
+	parser.add_argument('-s', '--startfrom', default='', help='Run from and including this step [e.g. 7 or hist]')
+	parser.add_argument('-o', '--only', default='', help='Run only the given step [e.g. 4 or unique]')
+
+	args = parser.parse_args()
+
+	if args.list:
+		parser.print_help()
+		print('')
+		print(workflow)
+		sys.exit()
+
+	numArguments = args.all + args.blast + bool(args.startfrom) + bool(args.only)
+
+	if numArguments != 1:
+		parser.print_help()
+		sys.exit()
+
+	if args.all:
+		runWorkflow('parse')
+	elif args.blast:
+		runWorkflow('blast')
+	elif args.startfrom:
+		try:
+			a = int(args.startfrom)
+		except ValueError:
+			if args.startfrom in tasknames:
+				runWorkflow(args.startfrom)
+			else:
+				parser.print_help()
+		else:
+			if a < len(tasknames):
+				runWorkflow(tasknames[a])
+			else:
+				parser.print_help()
+	elif args.only:
+		try:
+			a = int(args.only)
+		except ValueError:
+			if args.only in tasknames:
+				task = tasks[args.only][1]
+				task()
+			else:
+				parser.print_help()
+		else:
+			if a < len(tasknames):
+				task = tasks[tasknames[a]][1]
+				task()
+			else:
+				parser.print_help()
+	else:
+		print('This should not happen!')
+		parser.print_help()
+
+
+
+
+
+
+
