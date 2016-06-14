@@ -19,30 +19,22 @@ class ConfigReader():
 	The ConfigReader shall read the `limits.txt` and `proteinlist.txt` and return the contents in different formats upon request.
 	'''
 
-	#### The proteinlist reader methods need refacturing!!! It must be easier to implement them.
-
 	def __init__(self):
 		'''
 		Initiates the class.
 		'''
 
-		self.proteinSet = None
-		self.limitsDict = None
+		self._readProteinlist()
+		self._readLimits()
 
 
-	def readLimits(self):
+	def _readLimits(self):
 		'''
-		Reads `limits.txt` and returns a dict in the format: {'protein': (evalue, length), ...} where evalue is the negative exponent of the evalue (int) and length is the length limit for the protein (int).
-
-		:uses: `limits.txt`
-		:returns: A dictionary with limits as described above
+		Reads `limits.txt` and saves the content as dictionary to be used by the `getLimits()` method.
 		'''
-
-		if self.limitsDict is not None:
-			return self.limitsDict
 
 		with open('limits.txt', 'r') as f:
-			limits = {}
+			self.limitsDict = {}
 			for line in f:
 				line = line.split('#')[0].rstrip()
 				if line == '':
@@ -56,63 +48,79 @@ class ConfigReader():
 					length = int(lline[2])
 				except ValueError:
 					length = None
-				limits[lline[0]] = (evalue, length)
-
-		self.limitsDict = limits
-
-		return limits
+				self.limitsDict[lline[0]] = (evalue, length)
 
 
-	def readProteinsWithFN(self, prefix = '', suffix = ''):
+	def getLimits(self):
 		'''
-		Reads proteinlist.txt and returns a dict in the format: {'protein': set('file1', 'file2', ...), ...}. The files are just the basenames without suffix. A prefix (a path) can be added as well as a suffix. readProteins('abc/', '.txt') will turn 'file1' into 'abc/file1.txt'.
+		Reads `limits.txt` and returns a dict in the format: {'protein': (evalue, length), ...} where evalue is the negative exponent of the evalue (int) and length is the length limit for the protein (int).
 
-		:uses: `proteinlist.txt`
-		:returns: A dict with proteins as described above
+		:uses: `limits.txt`
+		:returns: A dictionary with limits as described above
+		'''
+
+		return self.limitsDict
+
+
+	def _readProteinlist(self):
+		'''
+		Reads `proteinlist.txt` and saves the content as lists to be used by the get* methods.
 		'''
 
 		with open('proteinlist.txt', 'r') as f:
-			proteins = {}
+			self.proteins = []
+			self.proteinFiles = []
 			for line in f:
 				line = line.split('#')[0].strip()
 				if not line:
 					continue
 				elems = line.split()
-				if elems[0] not in proteinlist:
-					proteins[elems[0]] = set()
-				proteins[elems[0]].add(prefix + elems[1].replace('.fasta', suffix))
+				if elems[0] not in self.proteins:
+					self.proteins.append(elems[0])
+					self.proteinFiles.append([])
+				pidx = self.proteins.index(elem[0])
+				self.proteinFiles[pidx].append(elems[1].replace('.fasta', ''))
 
-		return proteins
 
-
-	def readProteins(self):
+	def getProteinNames(self):
 		'''
-		Reads proteinlist.txt and returns a set in the format: {'protein1', 'protein2', ...}.
+		Returns a set of proteins in the format: {'protein1', 'protein2', ...}.
 
 		:returns: A set with proteins
 		'''
 
-		if self.proteinSet is not None:
-			return self.proteinSet
-
-		self.proteinSet = set(self.readProteinsWithFN().keys())
-
-		return self.proteinSet
+		return set(self.proteins)
 
 
-	def readProteinFNs(self, prefix = '', suffix = ''):
+	def getProteinFiles(self, prefix = '', suffix = ''):
 		'''
-		Reads proteinlist.txt and returns a set in the format: {'proteinfile1', 'proteinfile2', ...}. The files are just the basenames without suffix. A prefix (a path) can be added as well as a suffix. readProteins('abc/', '.txt') will turn 'proteinfile1' into 'abc/proteinfile1.txt'.
+		Returns a set of filenames in the format: {'proteinfile1', 'proteinfile2', ...}. The files are just the basenames without suffix. A prefix (a path) can be added as well as a suffix. getProteinFiles('abc/', '.txt') will turn 'file1' into 'abc/file1.txt'.
 
-		:returns: A set with protein filenames
+		:param prefix: A string to be prepended before the filename
+		:param suffix: A string to be appended after the filename
+		:returns: A set of filenames
 		'''
 
-		p = self.readProteinsWithFN(prefix, suffix)
-		fns = set()
-		for k in p:
-			fns.update(p[k])
+		return set((prefix + fn + suffix for proteinlist in self.proteinFiles for fn in proteinlist))
 
-		return fns
+
+	def getProteinDict(self, prefix = '', suffix = ''):
+		'''
+		Returns a dict with proteins and their respective file names in the format: {'protein': set('file1', 'file2', ...), ...}. The files are just the basenames without suffix. A prefix (a path) can be added as well as a suffix. getProteinDict('abc/', '.txt') will turn 'file1' into 'abc/file1.txt'.
+
+		:param prefix: A string to be prepended before the filename
+		:param suffix: A string to be appended after the filename
+		:returns: A dictionary as described above
+		'''
+
+		ret = {}
+		for i in range(len(self.proteins)):
+			ret[self.proteins[i]] = set((prefix + fn + suffix for fn in self.proteinFiles[i]))
+
+		return ret
+
+	# end ConfigReader
+
 
 
 # We need objects of these two classes for most of the functions, so we initialize them here already
@@ -239,8 +247,8 @@ def combineParsedResults():
 
 	os.makedirs('combinedtables', exist_ok=True)
 
-	limits = CR.readLimits()
-	proteins = CR.readProteinsWithFN(prefix = 'resulttables/', suffix = '.tsv')
+	limits = CR.getLimits()
+	proteins = CR.getProteinDict(prefix = 'resulttables/', suffix = '.tsv')
 
 	for k in sorted(proteins):
 		print('combining tsv files... {:<40}'.format(k), end='\r')
@@ -280,7 +288,7 @@ def tablesForInteractiveHeatmap():
 	:creates: `interactivetables/*.tsv`
 	'''
 
-	proteins = CR.readProteinsWithFN(prefix = 'resulttables/', suffix = '.tsv')
+	proteins = CR.getProteinDict(prefix = 'resulttables/', suffix = '.tsv')
 
 	os.makedirs('interactivetables', exist_ok=True)
 
@@ -530,7 +538,7 @@ def treeAttributes():
 	:creates: `attributes.txt` (containing the keys for each protein)
 	'''
 
-	proteinlist = CR.readProteins()
+	proteinlist = CR.getProteinNames()
 
 	with open('trees/general.tre', 'r') as f:
 		tree = f.read()
@@ -656,7 +664,7 @@ def showBlastMapping():
 
 	os.makedirs('blastmappings', exist_ok=True)
 
-	fnames = sorted(list(CR.readProteinFNs(suffix = '.fasta')))
+	fnames = sorted(list(CR.getProteinFiles(suffix = '.fasta')))
 
 	fnt = ImageFont.load_default()
 
