@@ -4,7 +4,9 @@ import sys
 import os
 import math
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
+import scipy.cluster.hierarchy as clusHier
 from glob import glob
 from PIL import Image, ImageDraw, ImageFont
 from Bio.Blast import NCBIXML
@@ -78,7 +80,7 @@ class ConfigReader():
 				if elems[0] not in self.proteins:
 					self.proteins.append(elems[0])
 					self.proteinFiles.append([])
-				pidx = self.proteins.index(elem[0])
+				pidx = self.proteins.index(elems[0])
 				self.proteinFiles[pidx].append(os.path.splitext(elems[1])[0])
 
 
@@ -803,15 +805,120 @@ def similarityMatrix():
 			out.write(names[i] + '\t' + '\t'.join(map(str, line)) + '\n')
 
 
-def heatmap():
-	raise NotImplementedError('The heatmap is not implemented, yet.')
-
-
+### This function needs some arguments, like the taxa to use, the colors, the clustering/linkage algorithm etc.
 def intHeatmap():
-	raise NotImplementedError('The interactive heatmap is not implemented, yet.')
+	'''
+	Creates an interactive heatmap as html file with javascript.
+
+	:uses: heatmapTemplate.html
+	:creates: out.html
+	'''
+
+	taxaToCheck = [
+	'Homo_sapiens_(Mammal)^9606',
+	'Rattus_norvegicus_(Mammal)^10116',
+	'Bos_taurus_(Mammal)^9913',
+	'Gallus_gallus_(Bird)^9031',
+	'Chelonia_mydas_(Turtle)^8469',
+	'Python_bivittatus_(Snake)^176946',
+	'Xenopus_laevis_(Frog)^8355',
+	'Notothenia_coriiceps_(Fish)^8208',
+	'Salmo_salar_(Fish)^8030',
+	'Danio_rerio_(Fish)^7955',
+	'Branchiostoma_floridae_(Lancelet)^7739',
+	'Oikopleura_dioica_(Tunicate)^34765',
+	'Strongylocentrotus_purpuratus_(Sea_urchin)^7668',
+	'Limulus_polyphemus_(Horseshoe_crab)^6850',
+	'Drosophila_melanogaster_(Fly)^7227',
+	'Caenorhabditis_elegans_(Nematode)^6239',
+	'Wuchereria_bancrofti_(Nematode)^6293',
+	'Trichinella_spiralis_(Nematode)^6334',
+	'Helobdella_robusta_(Annelid)^6412',
+	'Saccoglossus_kowalevskii_(Mollusc)^10224',
+	'Aplysia_californica_(Mollusc)^6500',
+	'Crassostrea_gigas_(Mollusc)^29159',
+	'Lingula_anatina_(Brachiopod)^7574',
+	'Schistosoma_haematobium_(Platyhelminthes)^6185',
+	'Echinococcus_granulosus_(Platyhelminthes)^6210',
+	'Nematostella_vectensis_(Cnidaria)^45351',
+	'Suberites_domuncula_(Sponge)^55567',
+	'Amphimedon_queenslandica_(Sponge)^400682',
+	'Allomyces_macrogynus_(Fungi)^28583',
+	'Capronia_epimyces_(Fungi)^43228',
+	'Mortierella_verticillata_(Fungi)^78898',
+	'Saccharomyces_cerevisiae_(Fungi)^4932',
+	'Arabidopsis_thaliana_(Plant)^3702',
+	'Volvox_carteri_(Plant)^3067',
+	'Chlorella_variabilis_(Plant)^554065',
+	'Acanthamoeba_castellanii_(Amoeba)^5755']
+
+	colors = {'g': '#00cc00', 'r': '#cc0000', 'c': '#00cccc', 'b': '#0000cc'}
+
+	if not proteinsToCheck:
+		proteinsToCheck = sorted(list(CR.getProteinNames))
+
+	taxids = {}
+	tickTaxons = []
+	for i, tax in enumerate(taxaToCheck):
+		taxname, taxid = tax.split('^')
+		tickTaxons.append(taxname.replace('_', ' '))
+		taxids[taxid] = i
+
+	tickProteins = proteinsToCheck[:]
+
+	matrix = []
+	for i, protein in enumerate(proteinsToCheck):
+		matrix.append([-100] * len(taxaToCheck))
+		with open('dynamictables/{}.dyn.tsv'.format(protein), 'r') as f:
+			for line in f:
+				lline = line.split()
+				if lline[0] in taxids:
+					matrix[i][taxids[lline[0]]] = int(lline[1])
+
+	pdmatrix = pd.DataFrame(matrix, columns = tickTaxons, index = tickProteins)
+
+	linkage = clusHier.linkage(pdmatrix, method='centroid')
+	dendro = clusHier.dendrogram(linkage, labels = tickProteins, no_plot = True, distance_sort = True)
+
+	data = []
+	for num in dendro['leaves']:
+		data.append(matrix[num])
+
+	cl = [colors[c] for c in dendro['color_list']]
+
+	xvalues = [x[:] for x in dendro['icoord']]
+	yvalues = [y[:] for y in dendro['dcoord']]
+	maxX = max((max(x) for x in xvalues))
+	maxY = max((max(y) for y in yvalues))
+	xvalues = [[x/maxX for x in a] for a in xvalues]
+	yvalues = [[y/maxY for y in a] for a in yvalues]
+
+	longestSpecName = max(len(name) for name in tickTaxons)
+	longestProtName = max(len(name) for name in tickProteins)
+
+	width = str(int(10 + 12 * len(tickProteins) + 6.5 * longestSpecName))
+	height = str(int(75 + 10 + 12 * len(tickTaxons) + 7 * longestProtName))
+
+	clusterp = [[cl[i]] + list(zip(*x)) for i, x in enumerate(zip(xvalues, yvalues))]
+
+	cproteinsPrintable = repr(dendro['ivl'])
+	clusterPrintable = repr(clusterp).replace('(', '[').replace(')', ']')
+	cdataPrintable = repr(list(zip(*data))).replace('(', '[').replace(')', ']')
+	taxaPrintable = repr(tickTaxons)
+	adataPrintable = repr(list(zip(*matrix))).replace('(', '[').replace(')', ']')
+	aproteinsPrintable = repr(proteinsToCheck)
+
+	with open('heatmapTemplate.html', 'r') as temp:
+		template = temp.read()
+
+	f = template.replace('{CWIDTH}', width).replace('{CHEIGHT}', height).replace('{CDATA}', cdataPrintable).replace('{TAXA}', taxaPrintable).replace('{CPROTEINS}', cproteinsPrintable).replace('{CLUSTER}', clusterPrintable).replace('{ADATA}', adataPrintable).replace('{APROTEINS}', aproteinsPrintable)
+
+	with open('out.html', 'w') as out:
+		out.write(f)
 
 
-tasknames = ['blast', 'parse', 'combine', 'comheat', 'unique', 'newick', 'attrib', 'hist', 'map', 'heatmap', 'intheat', 'matrix']
+
+tasknames = ['blast', 'parse', 'combine', 'comheat', 'unique', 'newick', 'attrib', 'hist', 'map', 'intheat', 'matrix']
 
 tasks = {'blast': ('run Blast', runBlast),
 'parse': ('parse Blast results', parseBlastResults),
@@ -822,8 +929,7 @@ tasks = {'blast': ('run Blast', runBlast),
 'attrib': ('determine tree attributes', treeAttributes),
 'hist': ('create histograms with Blast hits for each protein', makeHistograms),
 'map': ('create hit mapping diagrams for each protein', showBlastMapping),
-'heatmap': ('create a heatmap (image)', heatmap),
-'intheat': ('create an interactive heatmap (website)', dynHeatmap),
+'intheat': ('create an interactive heatmap (website)', intHeatmap),
 'matrix': ('create a similarity matrix of all proteins', similarityMatrix)}
 
 
