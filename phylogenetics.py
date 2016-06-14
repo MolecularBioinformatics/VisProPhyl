@@ -79,17 +79,19 @@ class ConfigReader():
 					self.proteins.append(elems[0])
 					self.proteinFiles.append([])
 				pidx = self.proteins.index(elem[0])
-				self.proteinFiles[pidx].append(elems[1].replace('.fasta', ''))
+				self.proteinFiles[pidx].append(os.path.splitext(elems[1])[0])
 
 
-	def getProteinNames(self):
+	def getProteinNames(self, prefix = '', suffix = ''):
 		'''
-		Returns a set of proteins in the format: {'protein1', 'protein2', ...}.
+		Returns a set of proteins in the format: {'protein1', 'protein2', ...}. A prefix (a path) can be added as well as a suffix. getProteinNames('abc/', '.txt') will turn 'protein1' into 'abc/protein1.txt'.
 
+		:param prefix: A string to be prepended before the name
+		:param suffix: A string to be appended after the name
 		:returns: A set with proteins
 		'''
 
-		return set(self.proteins)
+		return set((prefix + protein + suffix for protein in self.proteins))
 
 
 	def getProteinFiles(self, prefix = '', suffix = ''):
@@ -122,27 +124,34 @@ class ConfigReader():
 	# end ConfigReader
 
 
-
 # We need objects of these two classes for most of the functions, so we initialize them here already
 # TaxFinder takes some seconds to load, so this is, what makes loading this module slow.
 TF = TaxFinder()
 CR = ConfigReader()
 
-###### Here is a hardcoded path. That is not good!
-def _runBlast(query, db = '/home/mathias/projects/nr/nr', evalue = 1, maxthreads = cpu_count()):
+
+def _myGetBasename(name):
+	'''
+	Strips the path and the extension from a filename. E.g. /a/path/to/file.png -> file
+
+	:param name: The file and path to be processed
+	:returns: The processed filename
+	'''
+
+	return os.path.splitext(os.path.basename(name))[0]
+
+
+def _runBlast(query, outfilename, db, evalue = 1, maxthreads = cpu_count()):
 	'''
 	Private method to run Blast. This may take a long time (several minutes up to half-an-hour depending on the computer power and the size of the query and the database.
 
 	:param query: The filename of the query sequence (may include a path)
+	:param outfilename: The filename (including path) to save the result to
 	:param db: The database file
 	:param evalue: The e-value cut-off (should usually be very high, as the results will be filtered out afterwards)
 	:param maxthreads: The maximum number of threads to use by Blast
-	:creates: `blastresults/QUERY.xml`
+	:creates: `outfilename`
 	'''
-
-	os.makedirs('blastresults', exist_ok=True)
-
-	outfilename = 'blastresults/' + os.path.basename(query.replace('fasta', 'xml'))
 
 	cmd = NcbiblastpCommandline(query = query, db = db, evalue = evalue, outfmt = 5, out = outfilename, num_threads = maxthreads, max_target_seqs = 20000)
 	stdout, stderr = cmd()
@@ -156,17 +165,27 @@ def _runBlast(query, db = '/home/mathias/projects/nr/nr', evalue = 1, maxthreads
 		print('No errors')
 
 
-def runBlast():
+def runBlast(usefolder = 'fastas', db = '/home/mathias/projects/nr/nr'):
 	'''
 	Blasts a list of files.
+
+	:param usefolder: The folder in which to look to fasta files
+	:param db: The database to blast against
+	:creates: `blastresults/*.xml`
 	'''
 
-	li = glob('fastas/*.fasta')		### maybe get from proteinlist.txt
+	os.makedirs('blastresults', exist_ok=True)
+
+	if usefolder.endswith('/'):
+		usefolder = usefolder[:-1]
+
+	li = glob(usefolder + '/*.fasta')
 	outstring = 'Now blasting {:' + str(len(str(len(li)))) + 'd}/{}: {}'
 
 	for i, fname in enumerate(li):
 		print(outstring.format(i+1, len(li), fname))
-		_runBlast(fname)
+		outfilename = 'blastresults/{}.xml'.format(_myGetBasename(fname))
+		_runBlast(fname, outfilename, db)
 
 
 def _getTopFromBlast(blastXML, TF, top = 0, exContaminSpecies=True, outfile=None, newHeader=True):
@@ -179,13 +198,13 @@ def _getTopFromBlast(blastXML, TF, top = 0, exContaminSpecies=True, outfile=None
 	:param exContaminSpecies: Shall hits of known contaminated species be excluded?
 	:param outfile: The file to write the results to (including path). If it is None, use the basename of `blastXML`
 	:param newHeader: Where the Blast results produced with new headers (database from 2016 and newer)?
-	:creates: `resulttables/FILE.xml.tsv`
+	:creates: `resulttables/FILE.tsv`
 	'''
 
 	contaminantSpecies = set((118797, 59538, 7213))	# Lipotes vexillifer, Pantholops hodgsonii, Ceratitis capitata
 
 	if outfile is None:
-		outfile = 'resulttables/{}.tsv'.format(os.path.basename(blastXML))
+		outfile = 'resulttables/{}.tsv'.format(_myGetBasename(blastXML))
 
 	if top < 0:
 		top = 0
@@ -214,24 +233,25 @@ def _getTopFromBlast(blastXML, TF, top = 0, exContaminSpecies=True, outfile=None
 						out.write(line + '\n')
 
 
-#### This should get some argument to allow only certain files to be reparsed (as this takes time!)
-def parseBlastResults():
+def parseBlastResults(doOnly = None):
 	'''
 	Parses Blast results.
 
+	:param doOnly: Should be an iterable with filenames that shall be parsed. If all files in `blastresults` shall be parsed, this must be falsy.
 	:creates: `resulttables/*.tsv`
 	'''
 
-	li = glob('blastresults/*.xml')	### This may be taken from the proteinlist.txt
-
-	#li = ['blastresults/Athaliana_nadA_QS.xml']
+	if doOnly:
+		li = doOnly
+	else:
+		li = CR.getProteinFiles(prefix = 'blastresults/', suffix = '.xml')
 
 	os.makedirs('resulttables', exist_ok=True)
 
 	outstring = 'Now parsing {:' + str(len(str(len(li)))) + 'd}/{}: {:<30}'
 
 	for i, fname in enumerate(li):
-		basename = os.path.basename(fname)
+		basename = _myGetBasename(fname)
 		print(outstring.format(i+1, len(li), basename), end='\r')
 		getTopFromBlast(fname, TF = TF, top = 0, outfile='resulttables/{}.tsv'.format(basename), exContaminSpecies=True)
 
@@ -340,17 +360,14 @@ def uniqueNames():
 	:creates: `taxids/*.taxids`
 	'''
 
-	li = glob('combinedtables/*.tsv')	##### Use proteinlist.txt
-
 	os.makedirs('names', exist_ok=True)
 	os.makedirs('taxids', exist_ok=True)
 
 	totalNames = set()
 	totalTaxids = set()
 
-	for fn in li:
-		basename = os.path.basename(fn).replace('.tsv', '')
-		with open(fn, 'r') as f:
+	for fn in CR.getProteinNames():
+		with open('combinedtables/{}.tsv'.format(fn), 'r') as f:
 			names = set()
 			taxids = set()
 			next(f)	# skip header
@@ -362,11 +379,11 @@ def uniqueNames():
 		names = sorted(list(names))
 		taxids = sorted(list(taxids))
 
-		with open('names/{}.names'.format(basename), 'w') as f:
+		with open('names/{}.names'.format(fn), 'w') as f:
 			for name in names:
 				f.write(name + '\n')
 
-		with open('taxids/{}.taxids'.format(basename), 'w') as f:
+		with open('taxids/{}.taxids'.format(fn), 'w') as f:
 			for taxid in taxids:
 				f.write(str(taxid) + '\n')
 
@@ -441,14 +458,15 @@ def makeNewick():
 	:creates: `trees/*.tre`
 	'''
 
-	li = glob('taxids/*.taxids')	#### Read from proteinlist.txt? But general.taxid must also be taken.
+	li = CR.getProteinNames(prefix = 'taxids/', suffix = 'taxids')
+	li.add('taxids/general.taxids')
 
 	os.makedirs('trees', exist_ok=True)
 
 	Sani = NodeSanitizer()
 
 	for fname in li:
-		outfn = 'trees/{}.tre'.format(os.path.basename(fname).replace('.taxids', ''))
+		outfn = 'trees/{}.tre'.format(_myGetBasename(fname))
 		with open(fname, 'r') as infile:
 			lineages = []
 
@@ -570,29 +588,23 @@ def makeHistograms():
 	:creates: `histograms/*.png`
 	'''
 
-	proteins = {}
+	proteinFiles = CR.getProteinDict(prefix = 'fastas/', suffix = '.fasta')
+	seedLengths = {}
 
-	### use the ConfigReader
-	with open('proteinlist.txt', 'r') as f:
-		for line in f:
-			line = line.split('#')[0].rstrip()
-			protein, fasta = line.split()
-			if protein not in proteins:
-				proteins[protein] = []
-			length = 0
-			with open('fastas/'+fasta, 'r') as fastafile:
+	for prot in proteinFiles:
+		seedLengths[prot] = []
+		for f in proteinFiles[prot]:
+			with open(f, 'r') as fastafile:
 				next(fastafile)
 				for line in fastafile:
 					length += len(line.rstrip())
-			proteins[protein].append(length)
-
-	li = sorted(proteins.keys())
+			seedLengths[prot].append(length)
 
 	os.makedirs('histograms', exist_ok=True)
 
 	cm = plt.cm.get_cmap('rainbow')
 
-	for protein in li:
+	for protein in sorted(proteinFiles.keys()):
 		fn = 'combinedtables/{}.tsv'.format(protein)
 		print('Histogram: {:<50}'.format(protein), end='\r')
 		values = np.loadtxt(fn, dtype=np.int, comments=None, delimiter='\t', skiprows=1, usecols=(5,))
@@ -620,7 +632,7 @@ total elements: {}
 
 interval: {}'''.format(mi, ma, np.mean(values), np.median(values), values.size, interval)
 
-		seeds = proteins[protein]
+		seeds = seedLengths[protein]
 
 		sizes = '''Seed protein(s)
 min: {}
@@ -650,7 +662,7 @@ total seeds: {}'''.format(min(seeds), max(seeds), np.average(seeds), len(seeds))
 
 		ax.text(0.95, 0.95, sizes, transform=ax.transAxes, horizontalalignment='right', verticalalignment='top')
 
-		fig.savefig('histograms/{}.png'.format(os.path.basename(fn).replace('.tsv', '')))
+		fig.savefig('histograms/{}.png'.format(fn))
 
 		fig.clear()
 
@@ -664,7 +676,7 @@ def showBlastMapping():
 
 	os.makedirs('blastmappings', exist_ok=True)
 
-	fnames = sorted(list(CR.getProteinFiles(suffix = '.fasta')))
+	fnames = sorted(list(CR.getProteinFiles()))
 
 	fnt = ImageFont.load_default()
 
@@ -672,7 +684,7 @@ def showBlastMapping():
 		print('Mapping {:<50}'.format(fname), end='\r')
 
 		query_length = 0
-		with open('fastas/' + fname, 'r') as f:
+		with open('fastas/{}.fasta'.format(fname), 'r') as f:
 			next(f)
 			for line in f:
 				query_length += len(line.rstrip())
@@ -680,7 +692,7 @@ def showBlastMapping():
 		counters = [np.zeros(query_length, np.int) for x in range(6)]
 		numHsps = [0] * 6
 
-		with open('blastresults/' + fname.replace('.fasta', '.xml'), 'r') as f:
+		with open('blastresults/{}.xml'.format(fname), 'r') as f:
 			records = NCBIXML.parse(f)
 
 			for record in records:
@@ -730,7 +742,7 @@ def showBlastMapping():
 				dr.line([(col + 60, n*100), (col + 60, thickness + n*100)], fill=colors[n], width=1)
 
 		#im.show()
-		im.save('blastmappings/' + fname.replace('.fasta', '.png'))
+		im.save('blastmappings/{}.png'.format(fname))
 
 
 def similarityMatrix():
@@ -742,10 +754,9 @@ def similarityMatrix():
 	'''
 
 	values = {}
-	for fn in glob('combinedtables/*.combined.tsv'):	##### Maybe use proteinlist.txt
-		name = fn.replace('combinedtables/', '').replace('.combined.tsv', '')
+	for name in CR.getProteinNames():
 		values[name] = [set() for _ in range(151)]
-		with open(fn) as f:
+		with open('combinedtables/{}.tsv'.format(fn), 'r') as f:
 			next(f)
 			for line in f:
 				lline = line.split('\t')
