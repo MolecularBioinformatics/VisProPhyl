@@ -1,9 +1,9 @@
 File                       Function in module          status
 
 combineTSVs.py             combineParsedResults        ok
-createHeatmap.py           ---                         MISSING
+createHeatmap.py           ---                         MISSING (use TOR version)
 createJSHeatmap.py         intHeatmap                  ok
-createTree.py              ---                         MISSING
+createTree.py              _file_ phylotree.py         ok
 makeHistograms.py          makeHistogram               ok
 makeNewick.py              makeNewick                  ok
 runBlast.py                runBlast                    ok
@@ -12,10 +12,10 @@ similarityMatrix.py        similarityMatrix            ok
 tablesForDynamicHeatmap.py tablesForInteractiveHeatmap ok
 treeAttributes.py          treeAttributes              ok
 uniqueNames.py             uniqueNames                 ok
-venndiagrams.py            ---                         MISSING
+venndiagrams.py            ---                         MISSING (use TOR version)
 XMLtoTSV.py                parseBlastResults           ok
 
-downloadFastasFromUniprot  ---                         MISSING
+downloadFastasFromUniprot  ---                         MISSING (use TOR version)
 workflow                   runWorkflow                 ok
 
-network_overview           ---                         MISSING
+network_overview           ---                         MISSING (use TOR version)
