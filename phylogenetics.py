@@ -260,6 +260,10 @@ protB	elephant_ugyht.fasta''')
 !pruneafter
 Bacteria^2''')
 
+	if not os.path.isfile('heatmapTemplate.html'):
+		with open('heatmapTemplate.html', 'w') as out, open(os.path.join(os.path.dirname(os.path.realpath(__file__)), 'heatmapTemplate.html'), 'r') as f:
+			out.write(f.read())
+
 
 def runBlast(usefolder = 'fastas', db = '/home/mathias/projects/nr/nr'):
 	'''
@@ -349,9 +353,7 @@ def parseBlastResults(doOnly = None):
 	for i, fname in enumerate(li):
 		basename = _myGetBasename(fname)
 		print(outstring.format(i+1, len(li), basename), end='\r')
-		getTopFromBlast(fname, TF = TF, top = 0, outfile='resulttables/{}.tsv'.format(basename), exContaminSpecies=True)
-
-	print('')
+		_getTopFromBlast(fname, TF = TF, top = 0, outfile='resulttables/{}.tsv'.format(basename), exContaminSpecies=True)
 
 
 def combineParsedResults():
@@ -393,8 +395,6 @@ def combineParsedResults():
 
 		if not os.path.getsize(outfn):
 			os.remove(outfn)
-
-	print('')
 
 
 def tablesForInteractiveHeatmap():
@@ -554,7 +554,7 @@ def makeNewick():
 	:creates: `trees/*.tre`
 	'''
 
-	li = CR.getProteinNames(prefix = 'taxids/', suffix = 'taxids')
+	li = CR.getProteinNames(prefix = 'taxids/', suffix = '.taxids')
 	li.add('taxids/general.taxids')
 
 	os.makedirs('trees', exist_ok=True)
@@ -652,7 +652,7 @@ def treeAttributes():
 	:creates: `attributes.txt` (containing the keys for each protein)
 	'''
 
-	proteinlist = CR.getProteinNames()
+	proteinlist = sorted(list(CR.getProteinNames()))
 
 	with open('trees/general.tre', 'r') as f:
 		tree = f.read()
@@ -691,6 +691,7 @@ def makeHistograms():
 		seedLengths[prot] = []
 		for f in proteinFiles[prot]:
 			with open(f, 'r') as fastafile:
+				length = 0
 				next(fastafile)
 				for line in fastafile:
 					length += len(line.rstrip())
@@ -758,7 +759,7 @@ total seeds: {}'''.format(min(seeds), max(seeds), np.average(seeds), len(seeds))
 
 		ax.text(0.95, 0.95, sizes, transform=ax.transAxes, horizontalalignment='right', verticalalignment='top')
 
-		fig.savefig('histograms/{}.png'.format(fn))
+		fig.savefig('histograms/{}.png'.format(protein))
 
 		fig.clear()
 
@@ -852,7 +853,7 @@ def similarityMatrix():
 	values = {}
 	for name in CR.getProteinNames():
 		values[name] = [set() for _ in range(151)]
-		with open('combinedtables/{}.tsv'.format(fn), 'r') as f:
+		with open('combinedtables/{}.tsv'.format(name), 'r') as f:
 			next(f)
 			for line in f:
 				lline = line.split('\t')
@@ -946,10 +947,12 @@ def intHeatmap():
 	'Chlorella_variabilis_(Plant)^554065',
 	'Acanthamoeba_castellanii_(Amoeba)^5755']
 
+	proteinsToCheck = []
+
 	colors = {'g': '#00cc00', 'r': '#cc0000', 'c': '#00cccc', 'b': '#0000cc'}
 
 	if not proteinsToCheck:
-		proteinsToCheck = sorted(list(CR.getProteinNames))
+		proteinsToCheck = sorted(list(CR.getProteinNames()))
 
 	taxids = {}
 	tickTaxons = []
@@ -963,7 +966,7 @@ def intHeatmap():
 	matrix = []
 	for i, protein in enumerate(proteinsToCheck):
 		matrix.append([-100] * len(taxaToCheck))
-		with open('dynamictables/{}.dyn.tsv'.format(protein), 'r') as f:
+		with open('interactivetables/{}.tsv'.format(protein), 'r') as f:
 			for line in f:
 				lline = line.split()
 				if lline[0] in taxids:
@@ -1023,7 +1026,7 @@ tasks = {'blast': ('run Blast', runBlast),
 'attrib': ('determine tree attributes', treeAttributes),
 'hist': ('create histograms with Blast hits for each protein', makeHistograms),
 'map': ('create hit mapping diagrams for each protein', showBlastMapping),
-'intheat': ('create an interactive heatmap (website)', intHeatmap),
+'intheat': ('create an interactive heatmap (html)', intHeatmap),
 'matrix': ('create a similarity matrix of all proteins', similarityMatrix)}
 
 
@@ -1063,6 +1066,7 @@ if __name__ == '__main__':
 	parser = argparse.ArgumentParser(description='This module provides you with tools to run phylogenetic analyses. Exactly one argument must be given.')
 
 	parser.add_argument('-l', '--list', action='store_true', help='Shows the whole workflow with information and exits')
+	parser.add_argument('-i', '--init', action='store_true', help='Initiates the working directory with necessary files and folders')
 	parser.add_argument('-a', '--all', action='store_true', help='Run the full workflow without Blast')
 	parser.add_argument('-b', '--blast', action='store_true', help='Run the full workflow including Blast')
 	parser.add_argument('-s', '--startfrom', default='', help='Run from and including this step [e.g. 7 or hist]')
@@ -1074,6 +1078,10 @@ if __name__ == '__main__':
 		parser.print_help()
 		print('')
 		print(workflow)
+		sys.exit()
+
+	if args.init:
+		init()
 		sys.exit()
 
 	numArguments = args.all + args.blast + bool(args.startfrom) + bool(args.only)
