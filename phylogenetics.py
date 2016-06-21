@@ -167,6 +167,100 @@ def _runBlast(query, outfilename, db, evalue = 1, maxthreads = cpu_count()):
 		print('No errors')
 
 
+def init():
+	os.makedirs('fastas', exist_ok=True)
+
+	if not os.path.isfile('config.txt'):
+		with open('config.txt', 'w') as f:
+			f.write('''# This file contains information about which features should be shown in the
+# tree. Every line starting with a hash (#) and empty lines are ignored.
+
+# # # # # Features # # # # #
+#
+# Three features are possible. The are written as followes (without hash):
+# two_letter_code:name of the feature
+# The first feature written ist feature A, the second one feature B and the
+# third one feature C
+# The letter code is given when running `treeAttributes.py`
+# The third feature may be omited
+
+aG:protein 1		# feature A
+aA:second protein	# feature B
+bC:protein three	# feature C
+
+# # # # # Colors for the features # # # # #
+#
+# The actual line with colors must start with a ! and contain eight colors in
+# hex mode separated by whitespace and/or comma.
+#   0        1        2        3        4        5        6        7
+#   A        B        C       A+B      A+C      B+C      all      none
+!#AA0000, #00AA00, #55AAFF, #DDDD00, #AA00AA, #3333FF, #000000, #c8c8c8''')
+
+	if not os.path.isfile('limits.txt'):
+		with open('limits.txt', 'w') as f:
+			f.write('''# This file defines limits for proteins. The columns should be whitespace-separated.
+# Empty lines and everything behind hashes is ignored.
+# The first column contains the protein name.
+# The second column contains the highest evalue that should be allowed.
+# The third column contains the lowest length that should be allowed.
+
+# The `default` values are used when there are no values for a given protein.
+# Unspecified values must be marked with some letter or string (e.g. `x`).
+# Default values will be taken for unspecified values.
+
+default	1e-30	50
+
+prot1		x	50
+protB		1e-50	x
+asdf		x	x''')
+
+	if not os.path.isfile('proteinlist.txt'):
+		with open('proteinlist.txt', 'w') as f:
+			f.write('''# This file contains all proteins.
+# The first column gives the general protein name, the second column the fasta
+# file of the seed protein. Columns must be separated by whitespace.
+
+prot1	human_prot1.fasta
+prot1	yeast_prot1.fasta
+protB	elephant_ugyht.fasta''')
+
+	if not os.path.isfile('tree_to_prune.txt'):
+		with open('tree_to_prune.txt', 'w') as f:
+			f.write('''# This file contains information about which nodes should be truncated or
+# deleted. Everything in a line after a hash (#) is ignored. Empty lines are
+# ignored.
+# There are some keywords to switch the modes of action. To switch the mode of
+# action, a line must start with a ! directly followed by the keyword with
+# nothing else in the line. Possible keywords are:
+#
+# !pruneafter
+# All children of the given node are pruned. That is, the node is kept, but all
+# child nodes are detached
+#
+# !pruneafterchildren
+# The children of the given node are kept but all of their children are pruned.
+# So all grandchildren are detached.
+#
+# !dontprune
+# All nodes given here are *not* pruned or detached. However, if a higher-level
+# node is detached, this one is deleted as well.
+#
+# !delete
+# These nodes are directly detached.
+#
+# The nodes itself must be given one in each line with either the name, the
+# taxid or the combination name^taxid. The name is sufficient in most cases,
+# but certain names are ambiguous. When there are two nodes with the same name,
+# both will be deleted. In these cases, write either taxid or name^taxid.
+# Examples for ambiguous names are (by far not complete):
+# - Aphelia (A moth and a plant)
+# - Bacteria (!) (The kingdom and an insect genus)
+# - Yersinia (Enterobacteria and mantids (insects))
+
+!pruneafter
+Bacteria^2''')
+
+
 def runBlast(usefolder = 'fastas', db = '/home/mathias/projects/nr/nr'):
 	'''
 	Blasts a list of files.
