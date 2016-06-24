@@ -11,11 +11,12 @@ from datetime import datetime
 
 class TreeMaker():
 
-	def __init__(self, tree, treefile, config, attr, prune, sqrt = False, collapse = True):
+	def __init__(self, tree, treefile, config, attr, prune, sqrt = False, collapse = True, show_empty_species = True):
 
 		self.t = tree
 		self.sqrt = sqrt
 		self.collapse = collapse
+		self.empty = show_empty_species
 		self.treefile = treefile
 		self.config = config
 		self.attr = attr
@@ -59,29 +60,32 @@ class TreeMaker():
 
 
 	def layout(self, node):
-		percents = [round(100.0*node.f_a/node.total), round(100.0*node.f_b/node.total), round(100.0*node.f_c/node.total), round(100.0*node.f_ab/node.total), round(100.0*node.f_ac/node.total), round(100.0*node.f_bc/node.total), round(100.0*node.f_all/node.total), round(100.0*node.f_none/node.total)]
-
-		i=0
-		if sum(percents) != 100:
-			x = sorted(percents)[-1]
-			i = percents.index(x)
-			percents[i] += 100 - sum(percents)
-
-		if self.sqrt:
-			size = int(math.sqrt(node.total)*5+1)
+		try:
+			percents = [round(100.0*node.f_a/node.total), round(100.0*node.f_b/node.total), round(100.0*node.f_c/node.total), round(100.0*node.f_ab/node.total), round(100.0*node.f_ac/node.total), round(100.0*node.f_bc/node.total), round(100.0*node.f_all/node.total), round(100.0*node.f_none/node.total)]
+		except ZeroDivisionError:
+			txt = TextFace(node.plainName, ftype='Arial', fgcolor='#000000')
 		else:
-			size = int(math.log10(node.total)*20+10)
+			i=0
+			if sum(percents) != 100:
+				x = sorted(percents)[-1]
+				i = percents.index(x)
+				percents[i] += 100 - sum(percents)
 
-		P = PieChartFace(percents, size, size, self.colors)
-		faces.add_face_to_node(P, node, 0, position="branch-top")
+			if self.sqrt:
+				size = int(math.sqrt(node.total)*5+1)
+			else:
+				size = int(math.log10(node.total)*20+10)
 
-		#col = float(sum(node.consumers))/float(node.total)
-		#fgcol = mpl_colors.rgb2hex(mpl_colormap.brg(col/10.0)) # foreground/text color depending on NAD consumer density
-		fgcol = '#000000'
+			P = PieChartFace(percents, size, size, self.colors)
+			faces.add_face_to_node(P, node, 0, position="branch-top")
 
-		#txt = TextFace('{}\n{:.2f}'.format(node.plainName, col), ftype='Arial', fgcolor=fgcol)
-		txt = TextFace(node.plainName, ftype='Arial', fgcolor=fgcol)
-		#txt.margin_right = -30
+			#col = float(sum(node.consumers))/float(node.total)
+			#fgcol = mpl_colors.rgb2hex(mpl_colormap.brg(col/10.0)) # foreground/text color depending on NAD consumer density
+			fgcol = '#000000'
+
+			#txt = TextFace('{}\n{:.2f}'.format(node.plainName, col), ftype='Arial', fgcolor=fgcol)
+			txt = TextFace(node.plainName, ftype='Arial', fgcolor=fgcol)
+			#txt.margin_right = -30
 
 		if node.is_leaf():
 			faces.add_face_to_node(txt, node, 0, position="branch-right")
@@ -275,8 +279,10 @@ class TreeMaker():
 					n.f_b += 1
 				elif self.f_a in s:
 					n.f_a += 1
-				else:
+				elif self.empty:
 					n.f_none += 1
+				else:
+					n.total -= 1	# This is to adjust the circle size for feature-empty species
 
 				n.total += 1
 
@@ -358,13 +364,14 @@ if __name__ == '__main__':
 
 	parser = argparse.ArgumentParser(description='Create a tree with piecharts. You need: Newick tree file, config file, attributes file, and a pruning file')
 
-	parser.add_argument('-c', '--config', default='config.txt', help='Filename of the file that contains the config with the tree features and the colors.')
+	parser.add_argument('-c', '--config', default='tree_config.txt', help='Filename of the file that contains the config with the tree features and the colors.')
 
 	parser.add_argument('-t', '--tree', default='trees/general.tre', help='Filename of .tre file for the tree. The file must be in Newick format and the names in the format: name^taxid')
 	parser.add_argument('-a', '--attr', default='attributes.txt', help='Filename of the file with the tree attributes.')
 	parser.add_argument('-p', '--prune', default='tree_to_prune.txt', help='Filename of the file with information, which nodes to prune and delete.')
 	parser.add_argument('--sqrt', action='store_true', help='Give this flag to use square root instead of log10 for the circle size')
 	parser.add_argument('-n', '--nocollapse', action='store_true', help='If this flag is given, dont collapse the tree.')
+	parser.add_argument('-e', '--empty', action='store_true', help='If this flag is given, show also species that do not have any of the given features.')
 	parser.add_argument('-s', '--show', action='store_true', help='Show tree in ETE Tree Viewer (good for inspection)')
 	parser.add_argument('-o', '--outfile', default='', help='If a filename is given, save the tree to that file. Valid extensions are: svg, pdf, png')
 	parser.add_argument('-w', '--width', type=int, default=1000, help='Width of the resulting picture in pixels.')
@@ -373,7 +380,7 @@ if __name__ == '__main__':
 
 	t = Tree(args.tree, format=8)
 
-	TM = TreeMaker(tree = t, treefile = args.tree, config = args.config, attr = args.attr, prune = args.prune, sqrt = args.sqrt, collapse = not args.nocollapse)
+	TM = TreeMaker(tree = t, treefile = args.tree, config = args.config, attr = args.attr, prune = args.prune, sqrt = args.sqrt, collapse = not args.nocollapse, show_empty_species = args.empty)
 
 	if args.show:
 		TM.showTree()

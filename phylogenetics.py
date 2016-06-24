@@ -129,7 +129,10 @@ class ConfigReader():
 # We need objects of these two classes for most of the functions, so we initialize them here already
 # TaxFinder takes some seconds to load, so this is, what makes loading this module slow.
 TF = TaxFinder()
-CR = ConfigReader()
+try:
+	CR = ConfigReader()
+except IOError:
+	CR = None
 
 
 def _myGetBasename(name):
@@ -171,9 +174,9 @@ def init():
 	'''
 	Creates some files and a folder to start with a new project. Existing files will not be overwritten.
 
-	:creates: config.txt
 	:creates: limits.txt
 	:creates: proteinlist.txt
+	:creates: tree_config.txt
 	:creates: tree_to_prune.txt
 	:creates: heatmapTemplate.html
 	:creates: fastas/
@@ -183,16 +186,16 @@ def init():
 
 	origDir = os.path.dirname(os.path.realpath(__file__))
 
-	if not os.path.isfile('config.txt'):
-		with open('config.txt', 'w') as out, open(os.path.join(origDir, 'config.txt'), 'r') as f:
-			out.write(f.read())
-
 	if not os.path.isfile('limits.txt'):
 		with open('limits.txt', 'w') as out, open(os.path.join(origDir, 'limits.txt'), 'r') as f:
 			out.write(f.read())
 
 	if not os.path.isfile('proteinlist.txt'):
 		with open('proteinlist.txt', 'w') as out, open(os.path.join(origDir, 'proteinlist.txt'), 'r') as f:
+			out.write(f.read())
+
+	if not os.path.isfile('tree_config.txt'):
+		with open('tree_config.txt', 'w') as out, open(os.path.join(origDir, 'tree_config.txt'), 'r') as f:
 			out.write(f.read())
 
 	if not os.path.isfile('tree_to_prune.txt'):
@@ -888,7 +891,7 @@ def intHeatmap():
 
 	proteinsToCheck = []
 
-	colors = {'g': '#00cc00', 'r': '#cc0000', 'c': '#00cccc', 'b': '#0000cc'}
+	colors = {'g': '#00cc00', 'r': '#cc0000', 'c': '#00cccc', 'b': '#0000cc', 'm': '#cc00cc'}
 
 	if not proteinsToCheck:
 		proteinsToCheck = sorted(list(CR.getProteinNames()))
