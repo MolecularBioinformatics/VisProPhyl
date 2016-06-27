@@ -14,6 +14,8 @@ aG:protein 1		# feature A
 aA:second protein	# feature B
 bC:protein three	# feature C
 
+>bBbAaFaH			# proteins to count (may be omited; must start with >)
+
 # # # # # Colors for the features # # # # #
 #
 # The actual line with colors must start with a ! and contain eight colors in

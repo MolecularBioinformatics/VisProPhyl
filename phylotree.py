@@ -39,6 +39,8 @@ class TreeMaker():
 		self.name_b = None	# Name for feature 2
 		self.name_c = None	# Name for feature 3
 
+		self.counterElements = []
+
 		# Colors for the features
 		#                          0          1          2          3          4          5          6          7
 		#                          A          B          C         A+B        A+C        B+C        all        none
@@ -79,12 +81,14 @@ class TreeMaker():
 			P = PieChartFace(percents, size, size, self.colors)
 			faces.add_face_to_node(P, node, 0, position="branch-top")
 
-			#col = float(sum(node.consumers))/float(node.total)
 			#fgcol = mpl_colors.rgb2hex(mpl_colormap.brg(col/10.0)) # foreground/text color depending on NAD consumer density
 			fgcol = '#000000'
 
-			#txt = TextFace('{}\n{:.2f}'.format(node.plainName, col), ftype='Arial', fgcolor=fgcol)
-			txt = TextFace(node.plainName, ftype='Arial', fgcolor=fgcol)
+			if node.counter:
+				cnt = float(sum(node.counter))/float(node.total)
+				txt = TextFace('{}\n{:.2f}'.format(node.plainName, cnt), ftype='Arial', fgcolor=fgcol)
+			else:
+				txt = TextFace(node.plainName, ftype='Arial', fgcolor=fgcol)
 			#txt.margin_right = -30
 
 		if node.is_leaf():
@@ -155,12 +159,6 @@ class TreeMaker():
 			for line in f:
 				line = line.strip()
 
-				if not line:
-					continue
-
-				if line.startswith('#'):
-					continue
-
 				if line.startswith('!'):
 					line = line[1:].replace(',', ' ')
 					self.colors = line.split()
@@ -171,6 +169,16 @@ class TreeMaker():
 					elif l < 8:
 						print('Too few colors in config file')
 						self.colors.extend(standardcolors[l:])
+					continue
+
+				line = line.split('#')[0].strip()
+
+				if not line:
+					continue
+
+				if line.startswith('>'):
+					line = line[1:]
+					self.counterElements = [line[i:i+2] for i in range(0, len(line), 2)]
 					continue
 
 				line = line.split(':')
@@ -242,8 +250,6 @@ class TreeMaker():
 
 
 	def addFeatures(self):
-		#percentHelper = 'efghijklmnxy'	# for consumers		####################
-
 		# Traverse the tree and add features to each node
 		for n in self.t.traverse('postorder'):
 			if n.name == 'NoName' or not n.name:
@@ -261,8 +267,9 @@ class TreeMaker():
 			n.add_features(f_all = 0)
 			n.add_features(f_none = 0)
 			n.add_features(total = 0)
-			#n.add_features(consumers = [0]*10)
+			n.add_features(counter = [0]*len(self.counterElements))
 			if n.is_leaf():
+				countThis = True
 				s = self.elements[n.taxid]
 
 				if self.f_a in s and self.f_b in s and self.f_c in s:
@@ -282,12 +289,14 @@ class TreeMaker():
 				elif self.empty:
 					n.f_none += 1
 				else:
-					n.total -= 1	# This is to adjust the circle size for feature-empty species
+					countThis = False
 
-				n.total += 1
+				if countThis:
+					n.total += 1
 
-				#for cons in consumers:
-				#	n.consumers[percentHelper.index(cons)] += 1
+					for i, c in enumerate(self.counterElements):
+						if c in s:
+							n.counter[i] += 1
 
 			else:
 				for x in n.children:
@@ -301,7 +310,7 @@ class TreeMaker():
 					n.f_none += x.f_none
 					n.total += x.total
 
-					#n.consumers = map(add, n.consumers, x.consumers)
+					n.counter = list(map(add, n.counter, x.counter))
 
 	# end addFeatures()
 
