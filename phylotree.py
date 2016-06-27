@@ -139,8 +139,9 @@ class TreeMaker():
 			self.ts.legend.add_face(CircleFace(10, self.colors[6]), column=0)
 			self.ts.legend.add_face(TextFace(self.name_a + ' + ' + self.name_b + ' + ' + self.name_c), column=1)
 
-		self.ts.legend.add_face(CircleFace(10, self.colors[7]), column=0)
-		self.ts.legend.add_face(TextFace('none'), column=1)
+		if self.empty:
+			self.ts.legend.add_face(CircleFace(10, self.colors[7]), column=0)
+			self.ts.legend.add_face(TextFace('none'), column=1)
 
 		self.ts.legend.add_face(TextFace(datetime.now().strftime('%a, %d.%m.%Y; %H:%M:%S'), fsize=8), column=1)
 		self.ts.legend.add_face(TextFace('Tree: ' + self.treefile, fsize=8), column=1)
