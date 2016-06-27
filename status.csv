@@ -12,7 +12,7 @@ similarityMatrix.py        similarityMatrix            ok
 tablesForDynamicHeatmap.py tablesForInteractiveHeatmap ok
 treeAttributes.py          treeAttributes              ok
 uniqueNames.py             uniqueNames                 ok
-venndiagrams.py            ---                         MISSING (use TOR version)
+venndiagrams.py            ---                         Not needed
 XMLtoTSV.py                parseBlastResults           ok
 
 downloadFastasFromUniprot  ---                         MISSING (use TOR version)
