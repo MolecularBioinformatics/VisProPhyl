@@ -169,7 +169,7 @@ class TreeMaker():
 						self.colors = self.colors[:8]
 					elif l < 8:
 						print('Too few colors in config file')
-						self.colors.extend(standardcolors[l:])
+						self.colors.extend(self.standardcolors[l:])
 					continue
 
 				line = line.split('#')[0].strip()
@@ -340,7 +340,7 @@ class TreeMaker():
 		# Now, we have the nodes to keep. We need a list of nodes to detach.
 		for n in toPrune:
 			for m in n.children:
-					toDetach.append(m)
+				toDetach.append(m)
 
 		# Finally, we can detach the nodes.
 		for n in toDetach:
