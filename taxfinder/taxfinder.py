@@ -107,8 +107,10 @@ class TaxFinder():
 	def getTaxInfo(self, taxid):
 		'''
 		Get taxonomy information given a taxid number.
-		:returns: dict('taxid': int, 'level': int, 'parent': int, 'rank': str, 'name': str)
+		:returns: {'taxid': int, 'level': int, 'parent': int, 'rank': str, 'name': str}
 		'''
+
+		taxid = int(taxid)
 
 		try:
 			taxinfo = self.taxdb[taxid]
