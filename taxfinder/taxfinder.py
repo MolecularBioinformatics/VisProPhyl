@@ -159,7 +159,19 @@ class TaxFinder():
 			if self.getTaxInfo(tid)['rank'] == 'species':
 				return tid
 
-		return None
+		raise ValueError('No species found for {}'.format(taxid))
+
+
+	def getLowestReasonableTaxon(self, taxid):
+		notok = {'no rank', 'subspecies', 'forma', 'varietas'}
+		lineage = self.getLineageFast(int(taxid))
+		for tid in lineage[::-1]:
+			info = self.getTaxInfo(tid)
+			rank = info['rank']
+			if rank not in notok and 'sp.' not in info['name']:
+				return tid
+
+		raise ValueError('No reasonable taxon found for {}'.format(taxid))
 
 
 	def getLineage(self, taxid, display = 'name'):
