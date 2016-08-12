@@ -1,19 +1,11 @@
 #!/usr/bin/env python3
 
-import struct
 import re
 import os
-import sys
 
 class TaxFinder():
 
 	def __init__(self):
-
-		#self.binfile = open('/home/mathias/bin/KronaTools-2.6/taxonomy/gi_taxid.dat', 'rb')
-		# The database is saved in binary. Each gi number (starting with 0) has a 4 byte taxonomy id associated with it.
-		# Empty gi numbers are filled with 0 (zero) taking also 4 bytes. By this, the db access is quite easy (see self.getTaxID()).
-		########################################
-
 
 		self.acc2taxid = open(self._getFN('acc2taxid'), 'rb')
 		with open(self._getFN('numLines') ,'r') as f:
@@ -37,7 +29,6 @@ class TaxFinder():
 
 	def __exit__(self, exc_type, exc_value, traceback):
 		self.acc2taxid.close()
-		#self.binfile.close()	#############
 
 
 	def _getFN(self, fn):
@@ -48,6 +39,7 @@ class TaxFinder():
 
 	def getTaxID(self, acc):
 		''' Finds the NCBI taxonomy id given an accession id '''
+
 		# Accessions are always uppercase
 		acc = acc.upper()
 
@@ -86,27 +78,15 @@ class TaxFinder():
 
 		return taxid
 
-
-	def OLD_getTaxID(self, gi):
-		''' Finds the NCBI taxonomy id given a gi number '''
-		self.binfile.seek(int(gi)*4, 0)		# Go to position gi*4
-		taxid = self.binfile.read(4)		# Read 4 bytes from that position
-		try:
-			return struct.unpack('I', taxid)[0]	# Turn these 4 bytes into an unsigned 32 bit integer (I)
-		except struct.error:
-			print('GI: {}, Bytes: {}'.format(gi, taxid))
-			return 1
-
-
 	def getNameFromID(self, taxid):
-		''' Returns the name fitting to the taxid '''
+		''' Returns the taxonomic name of the given taxid '''
 
-		return self.taxdb[taxid]['name']
+		return self.taxdb[int(taxid)]['name']
 
 
 	def getTaxInfo(self, taxid):
 		'''
-		Get taxonomy information given a taxid number.
+		Get taxonomic information for the given taxid.
 		:returns: {'taxid': int, 'level': int, 'parent': int, 'rank': str, 'name': str}
 		'''
 
@@ -123,7 +103,10 @@ class TaxFinder():
 
 
 	def getInfoFromHitDef(self, hitid, hitdef, newHeader = True):
-		''' Get all taxonomy information from a hit id and hit definition (may include several species) '''
+		'''
+		Get all taxonomy information from a hit id and hit definition (may include several species)
+		:returns: [{'taxid': int, 'level': int, 'parent': int, 'rank': str, 'name': str, 'acc': str, 'protname': str}, ...]
+		'''
 
 		#if newHeader:
 		#	hit = hitid + '|' + hitdef
@@ -154,6 +137,10 @@ class TaxFinder():
 
 
 	def getSpeciesFromSubspecies(self, taxid):
+		'''
+		Given the taxid of a subspecies, returns the species or raises a ValueError if no species could be found.
+		'''
+
 		lineage = self.getLineageFast(int(taxid))
 		for tid in lineage[::-1]:
 			if self.getTaxInfo(tid)['rank'] == 'species':
@@ -163,6 +150,10 @@ class TaxFinder():
 
 
 	def getLowestReasonableTaxon(self, taxid):
+		'''
+		Given a taxid, returns the taxid the closest species or higher level (that is not `no rank`) that does not contain 'sp.' in its name. Raises a ValueError if no "reasonable taxon" could be found.
+		'''
+
 		notok = {'no rank', 'subspecies', 'forma', 'varietas'}
 		lineage = self.getLineageFast(int(taxid))
 		for tid in lineage[::-1]:
@@ -175,6 +166,14 @@ class TaxFinder():
 
 
 	def getLineage(self, taxid, display = 'name'):
+		'''
+		Given a taxid, returns the lineage up to `root` as tuple. `display` configures how the lineage should be shown. If `display` is 'name', the taxonomic name will be used. If it is 'taxid', the taxid will be used. If it is anything else, name^taxid will be used.
+		This method uses caching. If the lineage for a taxid was already found before, it will return that lineage in the `display` mode used in the first search, ignoring the current `display` value.
+		If the taxid could not be found, an empty tuple will be returned.
+		'''
+
+		taxid = int(taxid)
+
 		if taxid in self.lineageCache:
 			return self.lineageCache[taxid]
 
@@ -185,7 +184,7 @@ class TaxFinder():
 				t = self.taxdb[taxid]
 			except KeyError:
 				self.lineageCache[taxid] = tuple()
-				return []
+				return tuple
 			if display == 'taxid':
 				s = taxid
 			elif display == 'name':
@@ -203,6 +202,12 @@ class TaxFinder():
 
 
 	def getLineageFast(self, taxid):
+		'''
+		Given a taxid, returns the lineage up to `root` as list. All elements will be taxids.
+		This method is faster than `getLineage`, so use this when you need many lineages.
+		If the taxid could not be found, an empty tuple will be returned.
+		'''
+
 		if taxid in self.lineageCache:
 			return self.lineageCache[taxid]
 
@@ -219,6 +224,8 @@ class TaxFinder():
 
 		lineage.append(1)
 
-		self.lineageCache[taxid] = tuple(lineage[::-1])
+		lin = tuple(lineage[::-1])
 
-		return self.lineageCache[taxid]
+		self.lineageCache[taxid] = lin
+
+		return lin
