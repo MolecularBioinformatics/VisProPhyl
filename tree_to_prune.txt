@@ -17,13 +17,18 @@
 # All nodes given here are *not* pruned or detached. However, if a higher-level
 # node is detached, this one is deleted as well.
 #
-# !delete
+# !detach
 # These nodes are directly detached.
+#
+# !delete
+# These nodes are deleted but all children are attached to the parent of this
+# node. All !delete instructions will be performed after all other instructions
+# were done.
 #
 # The nodes itself must be given one in each line with either the name, the
 # taxid or the combination name^taxid. The name is sufficient in most cases,
 # but certain names are ambiguous. When there are two nodes with the same name,
-# both will be deleted. In these cases, write either taxid or name^taxid.
+# both will be affected. In these cases, write either taxid or name^taxid.
 # Examples for ambiguous names are (by far not complete):
 # - Aphelia (A moth and a plant)
 # - Bacteria (!) (The kingdom and an insect genus)

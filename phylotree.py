@@ -11,9 +11,15 @@ from datetime import datetime
 
 class TreeMaker():
 
-	def __init__(self, tree, treefile, config, attr, prune, sqrt = False, collapse = True, show_empty_species = True):
+	def __init__(self, tree, treefile, config, attr, prune, sqrt = False, collapse = True, show_empty_species = True, startnode = None):
 
-		self.t = tree
+		if startnode is None:
+			self.t = tree
+		else:
+			node = tree.search_nodes(name=startnode)
+			if not node:
+				raise KeyError('Node {} not found in tree.'.format(startnode))
+			self.t = node[0]
 		self.sqrt = sqrt
 		self.collapse = collapse
 		self.empty = show_empty_species
@@ -21,6 +27,7 @@ class TreeMaker():
 		self.config = config
 		self.attr = attr
 		self.prune = prune
+		self.startnode = startnode
 
 		# Read tree attributes into dict
 		self.elements = {}
@@ -65,7 +72,7 @@ class TreeMaker():
 		try:
 			percents = [round(100.0*node.f_a/node.total), round(100.0*node.f_b/node.total), round(100.0*node.f_c/node.total), round(100.0*node.f_ab/node.total), round(100.0*node.f_ac/node.total), round(100.0*node.f_bc/node.total), round(100.0*node.f_all/node.total), round(100.0*node.f_none/node.total)]
 		except ZeroDivisionError:
-			txt = TextFace(node.plainName, ftype='Arial', fgcolor='#000000')
+			txt = TextFace(' ' + node.plainName, ftype='Arial', fgcolor='#000000')
 		else:
 			i=0
 			if sum(percents) != 100:
@@ -86,9 +93,9 @@ class TreeMaker():
 
 			if node.counter:
 				cnt = float(sum(node.counter))/float(node.total)
-				txt = TextFace('{}\n{:.2f}'.format(node.plainName, cnt), ftype='Arial', fgcolor=fgcol)
+				txt = TextFace(' {}\n {:.2f}'.format(node.plainName, cnt), ftype='Arial', fgcolor=fgcol)
 			else:
-				txt = TextFace(node.plainName, ftype='Arial', fgcolor=fgcol)
+				txt = TextFace(' ' + node.plainName, ftype='Arial', fgcolor=fgcol)
 			#txt.margin_right = -30
 
 		if node.is_leaf():
@@ -206,6 +213,7 @@ class TreeMaker():
 		self.pruneAfterChildren = set()
 		self.dontPrune = set()
 		self.detach = set()
+		self.delete = set()
 
 		try:
 			with open(self.prune, 'r') as f:
@@ -227,8 +235,10 @@ class TreeMaker():
 							active = self.pruneAfterChildren
 						elif keyword == 'dontprune':
 							active = self.dontPrune
-						elif keyword == 'delete':
+						elif keyword == 'detach':
 							active = self.detach
+						elif keyword == 'delete':
+							active = self.delete
 						else:
 							print('Keyword {} not found!'.format(keyword))
 
@@ -323,6 +333,7 @@ class TreeMaker():
 		# Otherwise, tree traversing doesn't work.
 		toPrune = []
 		toDetach = []
+		toFinalDelete = []
 		for n in self.t.traverse('postorder'):
 			# Prune after children
 			if n.taxid in self.pruneAfterChildren or n.plainName in self.pruneAfterChildren:
@@ -336,6 +347,10 @@ class TreeMaker():
 			# Detach directly
 			if n.taxid in self.detach or n.plainName in self.detach:
 				toDetach.append(n)
+
+			# Delete in the end
+			if n.taxid in self.delete or n.plainName in self.delete:
+				toFinalDelete.append(n)
 
 		# Now, we have the nodes to keep. We need a list of nodes to detach.
 		for n in toPrune:
@@ -358,6 +373,9 @@ class TreeMaker():
 			for n in toDelete:
 				n.delete()
 
+		for n in toFinalDelete:
+			n.delete()
+
 	# end pruneTree()
 
 
@@ -379,6 +397,7 @@ if __name__ == '__main__':
 	parser.add_argument('-t', '--tree', default='trees/general.tre', help='Filename of .tre file for the tree. The file must be in Newick format and the names in the format: name^taxid')
 	parser.add_argument('-a', '--attr', default='attributes.txt', help='Filename of the file with the tree attributes.')
 	parser.add_argument('-p', '--prune', default='tree_to_prune.txt', help='Filename of the file with information, which nodes to prune and delete.')
+	parser.add_argument('--startnode', default=None, help='If the tree should not start from root, give the exact name of the node that should be the root of the tree.')
 	parser.add_argument('--sqrt', action='store_true', help='Give this flag to use square root instead of log10 for the circle size')
 	parser.add_argument('-n', '--nocollapse', action='store_true', help='If this flag is given, dont collapse the tree.')
 	parser.add_argument('-e', '--empty', action='store_true', help='If this flag is given, show also species that do not have any of the given features.')
@@ -390,7 +409,7 @@ if __name__ == '__main__':
 
 	t = Tree(args.tree, format=8)
 
-	TM = TreeMaker(tree = t, treefile = args.tree, config = args.config, attr = args.attr, prune = args.prune, sqrt = args.sqrt, collapse = not args.nocollapse, show_empty_species = args.empty)
+	TM = TreeMaker(tree = t, treefile = args.tree, config = args.config, attr = args.attr, prune = args.prune, sqrt = args.sqrt, collapse = not args.nocollapse, show_empty_species = args.empty, startnode = args.startnode)
 
 	if args.show:
 		TM.showTree()
