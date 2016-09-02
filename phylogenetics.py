@@ -242,7 +242,7 @@ def _getTopFromBlast(blastXML, TF, top = 0, exContaminSpecies=True, outfile=None
 	:creates: `resulttables/FILE.tsv`
 	'''
 
-	contaminantSpecies = set((118797, 59538, 7213))	# Lipotes vexillifer, Pantholops hodgsonii, Ceratitis capitata
+	contaminantSpecies = {118797, 59538, 7213}	# Lipotes vexillifer, Pantholops hodgsonii, Ceratitis capitata
 
 	if outfile is None:
 		outfile = 'resulttables/{}.tsv'.format(_myGetBasename(blastXML))
@@ -352,9 +352,6 @@ def tablesForInteractiveHeatmap():
 
 	os.makedirs('interactivetables', exist_ok=True)
 
-	totalNames = set()
-	totalTaxids = set()
-
 	for k in sorted(proteins):
 		print(k.ljust(50), end='\r')
 
@@ -388,8 +385,8 @@ def tablesForInteractiveHeatmap():
 						entries[taxid] = tid
 
 		with open('interactivetables/{}.tsv'.format(k), 'w') as outfile:
-			for k in sorted(entries.keys()):
-				outfile.write('{}\t{}\n'.format(k, entries[k]))
+			for m in sorted(entries.keys()):
+				outfile.write('{}\t{}\n'.format(m, entries[m]))
 
 
 def uniqueNames():
@@ -450,7 +447,7 @@ class NodeSanitizer():
 		'''
 
 		self.badChars = set()
-		self.goodChars = set(('A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', ' ', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '^', '_', '=', '-', '/', '.', '*'))
+		self.goodChars = {'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', ' ', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '^', '_', '=', '-', '/', '.', '*'}
 		self.toReplace = {'(': '<', ')': '>', '[': '<', ']': '>', '#': '_', ':': '_', '+': '', "'": '', ',': '_'}
 
 

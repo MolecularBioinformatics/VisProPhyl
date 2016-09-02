@@ -8,7 +8,7 @@ class TaxFinder():
 	def __init__(self):
 
 		self.acc2taxid = open(self._getFN('acc2taxid'), 'rb')
-		with open(self._getFN('numLines') ,'r') as f:
+		with open(self._getFN('numLines'), 'r') as f:
 			self.numLines = int(f.read().rstrip())
 
 		self.taxdb = {}
@@ -116,7 +116,7 @@ class TaxFinder():
 		#	reResults = re.finditer('gi\|([0-9]+)\|[^\|]+\|[^\|]+\|([^\[]+)', hit)	# Group 1 is gi number, group 2 is protein name
 
 		hit = hitid + hitdef
-		reResults = re.finditer('gi\|[0-9]+\|[^\|]+\|([^\|]+)\|([^>]+)', hit)	# group 1 is accession, group 2 is protein name
+		reResults = re.finditer(r'gi\|[0-9]+\|[^\|]+\|([^\|]+)\|([^>]+)', hit)	# group 1 is accession, group 2 is protein name
 
 		results = []
 

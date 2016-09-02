@@ -9,7 +9,7 @@ from matplotlib import cm as mpl_colormap
 from datetime import datetime
 
 
-class TreeMaker():
+class TreeMaker(object):
 
 	def __init__(self, tree, treefile, config, attr, prune, sqrt = False, collapse = True, show_empty_species = True, startnode = None):
 
@@ -255,7 +255,7 @@ class TreeMaker():
 							active.add(line)
 
 		except IOError:
-			print('File {} not found!'.format(fname))
+			print('File {} not found!'.format(self.prune))
 
 	# end readPruningFile()
 
