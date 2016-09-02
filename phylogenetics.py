@@ -270,7 +270,10 @@ def _getTopFromBlast(blastXML, TF, top = 0, exContaminSpecies=True, outfile=None
 					lineage = ', '.join(TF.getLineage(info['taxid'], display = 'name'))
 
 					for hsp in alignment.hsps:
-						line = '\t'.join((str(info['taxid']), info['acc'], info['name'], info['rank'], str(hsp.expect), str(hsp.align_length), lineage, info['protname'], record.query.split('|')[1]))
+						try:
+							line = '\t'.join((str(info['taxid']), info['acc'], info['name'], info['rank'], str(hsp.expect), str(hsp.align_length), lineage, info['protname'], record.query.split('|')[1]))
+						except IndexError:
+							line = '\t'.join((str(info['taxid']), info['acc'], info['name'], info['rank'], str(hsp.expect), str(hsp.align_length), lineage, info['protname'], record.query))
 
 						out.write(line + '\n')
 

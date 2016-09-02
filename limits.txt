@@ -8,6 +8,8 @@
 # Unspecified values must be marked with some letter or string (e.g. `x`).
 # Default values will be taken for unspecified values.
 
+# The file has effect in step 2 (combine parsed results) of the workflow.
+
 default	1e-30	50
 
 prot1		x	50
