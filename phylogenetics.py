@@ -11,7 +11,6 @@ from glob import glob
 from PIL import Image, ImageDraw, ImageFont
 from Bio.Blast import NCBIXML
 from Bio.Blast.Applications import NcbiblastpCommandline
-from Bio import Entrez
 from multiprocessing import cpu_count
 from taxfinder import TaxFinder
 
@@ -161,7 +160,7 @@ def _runBlast(query, outfilename, db, evalue = 1, maxthreads = cpu_count()):
 	cmd = NcbiblastpCommandline(query = query, db = db, evalue = evalue, outfmt = 5, out = outfilename, num_threads = maxthreads, max_target_seqs = 20000)
 	stdout, stderr = cmd()
 
-	print('Blasting', fname, 'done')
+	print('Blasting', query, 'done')
 	if stdout:
 		print(stdout)
 	if stderr:
