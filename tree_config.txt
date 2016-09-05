@@ -3,7 +3,7 @@
 
 # # # # # Features # # # # #
 #
-# Three features are possible. The are written as followes (without hash):
+# Three features are possible. They are written as followes (without hash):
 # two_letter_code:name of the feature
 # The first feature written ist feature A, the second one feature B and the
 # third one feature C
