@@ -366,8 +366,9 @@ def tablesForInteractiveHeatmap():
 					evalue = lline[4]
 
 					if rank != 'species':
-						res = TF.getSpeciesFromSubspecies(taxid)
-						if res is None:
+						try:
+							res = TF.getSpeciesFromSubspecies(taxid)
+						except ValueError:
 							continue
 						taxid = str(res)
 
