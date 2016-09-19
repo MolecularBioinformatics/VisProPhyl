@@ -205,6 +205,10 @@ def init():
 		with open('heatmapTemplate.html', 'w') as out, open(os.path.join(origDir, 'heatmapTemplate.html'), 'r') as f:
 			out.write(f.read())
 
+	if not os.path.isfile('crosshits.txt'):
+		with open('crosshits.txt', 'w') as out, open(os.path.join(origDir, 'crosshits.txt'), 'r') as f:
+			out.write(f.read())
+
 
 def runBlast(usefolder = 'fastas', db = '/home/mathias/projects/nr/nr'):
 	'''
@@ -842,76 +846,6 @@ def similarityMatrix():
 			out.write(names[i] + '\t' + '\t'.join(map(str, line)) + '\n')
 
 
-#adapted from similarityMatrix
-def getCrosshits(doOnly = None):
-	'''
-	For each pair of proteins creates a file '{protein1}-{protein2}-crosshits.tsv'
-	File has three columns: e-value, number of crosshits, AccIDs of crosshits (comma-separated)
-	Will use proteins in doOnly, 'crosshits.txt' (1 per line) or all proteins (in that order).
-
-	:param doOnly: Should be an iterable with proteinnames that shall be used. Names can also be passed in 'crosshits.txt'
-	:creates: `crosshits/*.tsv`
-	'''
-
-	if doOnly:
-		li = doOnly
-	elif os.path.isfile('crosshits.txt'):
-		with open('crosshits.txt', 'r') as f:
-			li = list()
-			for line in f:
-				line = line.rstrip('\n')
-				if line.startswith('#'):
-					continue
-				elif line:  # no empty lines
-					li += [line]
-	else:
-		li = CR.getProteinFiles()
-
-	os.makedirs('crosshits', exist_ok=True)
-
-	values = {}
-	for name in li:
-		values[name] = [set() for _ in range(151)]
-		with open('combinedtables/{}.tsv'.format(name), 'r') as f:
-			next(f)
-			for line in f:
-				lline = line.split('\t')
-				evalue = lline[4]
-				if 'e-' in evalue:
-					evalue = int(evalue.split('e-')[1])
-					if evalue > 150:
-						evalue = 150
-				elif evalue == '0.0':
-					evalue = 150
-				else:
-					evalue = 0
-				acc = lline[1]
-				values[name][evalue].add(acc)
-
-	names = sorted(values.keys())
-
-	for i, name1 in enumerate(names):
-		for name2 in names[i:]: #skips symmetric combinations
-			if name1 == name2:  #dont want that
-				continue
-			acc1 = set()
-			acc2 = set()
-			common = [set() for _ in range(151)]
-			oldhits = set()
-			for evalue in range(150, -1, -1):
-				acc1.update(values[name1][evalue])
-				acc2.update(values[name2][evalue])
-				inter = acc1.intersection(acc2)
-				common[evalue] = inter - oldhits #only write those hits that are new for this evalue
-				oldhits.update(inter)
-
-			with open("crosshits/{0}-{1}.csv".format(name1, name2), "w") as outf:
-				outf.write('e-value\tnumber-of-crosshits\tAccIDs\n')
-				for i, line in enumerate(common):
-					vals = (i, len(line), ",".join(list(line)))
-					outf.write('{0}\t{1}\t{2}\n'.format(*vals))
-
-
 ### This function needs some arguments, like the taxa to use, the colors, the clustering/linkage algorithm etc.
 def intHeatmap():
 	'''
@@ -1026,6 +960,73 @@ def intHeatmap():
 		out.write(f)
 
 
+#adapted from similarityMatrix
+def getCrosshits(doOnly = None):
+	'''
+	For each pair of proteins creates a file '{protein1}-{protein2}-crosshits.tsv'
+	File has three columns: e-value, number of crosshits, AccIDs of crosshits (comma-separated)
+	Will use proteins in doOnly or 'crosshits.txt' (1 per line).
+
+	:param doOnly: Should be an iterable with proteinnames that shall be used. If it's Falsy proteins in 'crosshits.txt' will be used instead.
+	:creates: `crosshits/*.tsv`
+	'''
+
+	if doOnly:
+		li = doOnly
+	else:
+		with open('crosshits.txt', 'r') as f:
+			li = list()
+			for line in f:
+				line = line.rstrip('\n')
+				if line.startswith('#'):
+					continue
+				elif line:  # no empty lines
+					li += [line]
+
+	os.makedirs('crosshits', exist_ok=True)
+
+	values = {}
+	for name in li:
+		values[name] = [set() for _ in range(151)]
+		with open('combinedtables/{}.tsv'.format(name), 'r') as f:
+			next(f)
+			for line in f:
+				lline = line.split('\t')
+				evalue = lline[4]
+				if 'e-' in evalue:
+					evalue = int(evalue.split('e-')[1])
+					if evalue > 150:
+						evalue = 150
+				elif evalue == '0.0':
+					evalue = 150
+				else:
+					evalue = 0
+				acc = lline[1]
+				values[name][evalue].add(acc)
+
+	names = sorted(values.keys())
+
+	for i, name1 in enumerate(names):
+		for name2 in names[i:]: #skips symmetric combinations
+			if name1 == name2:  #dont want that
+				continue
+			acc1 = set()
+			acc2 = set()
+			common = [set() for _ in range(151)]
+			oldhits = set()
+			for evalue in range(150, -1, -1):
+				acc1.update(values[name1][evalue])
+				acc2.update(values[name2][evalue])
+				inter = acc1.intersection(acc2)
+				common[evalue] = inter - oldhits #only write those hits that are new for this evalue
+				oldhits.update(inter)
+
+			with open("crosshits/{0}-{1}.csv".format(name1, name2), "w") as outf:
+				outf.write('e-value\tnumber-of-crosshits\tAccIDs\n')
+				for i, line in enumerate(common):
+					vals = (i, len(line), ",".join(list(line)))
+					outf.write('{0}\t{1}\t{2}\n'.format(*vals))
+
 
 tasknames = ['blast', 'parse', 'combine', 'comheat', 'unique', 'newick', 'attrib', 'hist', 'map', 'intheat', 'matrix', 'crosshits']
 
@@ -1043,7 +1044,7 @@ tasks = {'blast': ('run Blast', runBlast),
 'crosshits': ('create files with all blast crosshits of cretain proteins', getCrosshits)}
 
 
-def runWorkflow(start, end='matrix'):
+def runWorkflow(start, end=''):
 	'''
 	Starts the workflow from `start` until `end`. If `end` is empty, the workflow is run until the last element of the workflow.
 

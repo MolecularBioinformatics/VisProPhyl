@@ -1,0 +1,2 @@
+# List of proteinnames to use for crosshit calculation
+# 1 protein per line, empty lines and line starting with an hash are ignored
