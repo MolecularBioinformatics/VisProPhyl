@@ -205,6 +205,10 @@ def init():
 		with open('heatmapTemplate.html', 'w') as out, open(os.path.join(origDir, 'heatmapTemplate.html'), 'r') as f:
 			out.write(f.read())
 
+	if not os.path.isfile('crosshits.txt'):
+		with open('crosshits.txt', 'w') as out, open(os.path.join(origDir, 'crosshits.txt'), 'r') as f:
+			out.write(f.read())
+
 
 def runBlast(usefolder = 'fastas', db = '/home/mathias/projects/nr/nr'):
 	'''
@@ -956,8 +960,118 @@ def intHeatmap():
 		out.write(f)
 
 
+#adapted from similarityMatrix
+def getCrosshits(doOnly = None):
+	'''
+	For each pair of proteins creates a file '{protein1}-{protein2}-crosshits.tsv'
+	File has three columns: e-value, number of crosshits, AccIDs of crosshits (comma-separated)
+	Will use proteins in doOnly or 'crosshits.txt' (1 per line).
 
-tasknames = ['blast', 'parse', 'combine', 'comheat', 'unique', 'newick', 'attrib', 'hist', 'map', 'intheat', 'matrix']
+	:param doOnly: Should be an iterable with proteinnames that shall be used. If it's Falsy proteins in 'crosshits.txt' will be used instead.
+	:creates: `crosshits/*.tsv`
+	'''
+
+	if doOnly:
+		li = doOnly
+	else:
+		with open('crosshits.txt', 'r') as f:
+			li = list()
+			for line in f:
+				line = line.rstrip('\n')
+				if line.startswith('#'):
+					continue
+				elif line:  # no empty lines
+					li += [line]
+
+	os.makedirs('crosshits', exist_ok=True)
+
+	values = {}
+	for name in li:
+		values[name] = [set() for _ in range(151)]
+		with open('combinedtables/{}.tsv'.format(name), 'r') as f:
+			next(f)
+			for line in f:
+				lline = line.split('\t')
+				evalue = lline[4]
+				if 'e-' in evalue:
+					evalue = int(evalue.split('e-')[1])
+					if evalue > 150:
+						evalue = 150
+				elif evalue == '0.0':
+					evalue = 150
+				else:
+					evalue = 0
+				acc = lline[1]
+				values[name][evalue].add(acc)
+
+	names = sorted(values.keys())
+
+	for i, name1 in enumerate(names):
+		for name2 in names[i:]: #skips symmetric combinations
+			if name1 == name2:  #dont want that
+				continue
+			acc1 = set()
+			acc2 = set()
+			common = [set() for _ in range(151)]
+			oldhits = set()
+			for evalue in range(150, -1, -1):
+				acc1.update(values[name1][evalue])
+				acc2.update(values[name2][evalue])
+				inter = acc1.intersection(acc2)
+				common[evalue] = inter - oldhits #only write those hits that are new for this evalue
+				oldhits.update(inter)
+
+			with open("crosshits/{0}-{1}.tsv".format(name1, name2), "w") as outf:
+				outf.write('e-value\tnumber-of-crosshits\tAccIDs\n')
+				for j, line in enumerate(common):
+					vals = (j, len(line), ",".join(list(line)))
+					outf.write('{0}\t{1}\t{2}\n'.format(*vals))
+
+
+def crossHistograms():
+	combos = [f[:-4] for f in os.listdir('crosshits') if f.endswith('.tsv')]
+	data = {}
+
+	for c in combos:
+		with open('crosshits/'+c+'.tsv', 'r') as f:
+			next(f)
+			lowest = 0
+			d = np.array([range(151), [0]*151], dtype=np.int)
+			for line in f:
+				ev, num, accs = line.rstrip('\n').split('\t')
+				if not lowest and int(num):
+					lowest = int(ev)
+				d[1][int(ev)] = int(num)
+			highest = max([ev for ev, n in enumerate(d[1]) if n]) #highest ev with non-0 crosshits
+			data[c] = (lowest, highest, d)
+
+	for combo in combos:
+		print('Histogram: {:<50}'.format(combo), end='\r')
+		values = data[combo][2]
+
+		mi = data[combo][0] #(0) 30 or higher
+		ma = data[combo][1] #max 150
+
+		text = '''Distribution
+    min: {}
+    max: {}
+    average: {:.0f}
+    median: {:.0f}'''.format(mi, ma, np.mean(values[1][mi:ma]), np.median(values[1][mi:ma]))
+
+		fig = plt.figure(1, figsize=(12, 6))
+		ax = fig.add_subplot(1, 1, 1)
+		bars = ax.bar(values[0], values[1], width=1)
+
+		ax.text(0.05, 0.95, text, transform=ax.transAxes, horizontalalignment='left', verticalalignment='top')
+		ax.set_xlabel('E-value [10^-X]')
+		ax.set_ylabel('Number of crosshits')
+
+		fig.savefig('crosshits/{}-distribution.png'.format(combo))
+
+		fig.clear()
+
+
+tasknames = ['blast', 'parse', 'combine', 'comheat', 'unique', 'newick', 'attrib', 'hist', 'map', 'intheat', 'matrix', 'crosshits', 'crosshist']
 
 tasks = {'blast': ('run Blast', runBlast),
 'parse': ('parse Blast results', parseBlastResults),
@@ -969,7 +1083,9 @@ tasks = {'blast': ('run Blast', runBlast),
 'hist': ('create histograms with Blast hits for each protein', makeHistograms),
 'map': ('create hit mapping diagrams for each protein', showBlastMapping),
 'intheat': ('create an interactive heatmap (html)', intHeatmap),
-'matrix': ('create a similarity matrix of all proteins', similarityMatrix)}
+'matrix': ('create a similarity matrix of all proteins', similarityMatrix),
+'crosshits': ('create files with all blast crosshits of cretain proteins', getCrosshits),
+'crosshist': ('creates Histograms of e-value distribution for crosshits', crossHistograms)}
 
 
 def runWorkflow(start, end=''):
