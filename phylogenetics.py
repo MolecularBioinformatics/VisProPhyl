@@ -1021,14 +1021,57 @@ def getCrosshits(doOnly = None):
 				common[evalue] = inter - oldhits #only write those hits that are new for this evalue
 				oldhits.update(inter)
 
-			with open("crosshits/{0}-{1}.csv".format(name1, name2), "w") as outf:
+			with open("crosshits/{0}-{1}.tsv".format(name1, name2), "w") as outf:
 				outf.write('e-value\tnumber-of-crosshits\tAccIDs\n')
-				for i, line in enumerate(common):
-					vals = (i, len(line), ",".join(list(line)))
+				for j, line in enumerate(common):
+					vals = (j, len(line), ",".join(list(line)))
 					outf.write('{0}\t{1}\t{2}\n'.format(*vals))
 
 
-tasknames = ['blast', 'parse', 'combine', 'comheat', 'unique', 'newick', 'attrib', 'hist', 'map', 'intheat', 'matrix', 'crosshits']
+def crossHistograms():
+	combos = [f[:-4] for f in os.listdir('crosshits') if f.endswith('.tsv')]
+	data = {}
+
+	for c in combos:
+		with open('crosshits/'+c+'.tsv', 'r') as f:
+			next(f)
+			lowest = 0
+			d = np.array([range(151), [0]*151], dtype=np.int)
+			for line in f:
+				ev, num, accs = line.rstrip('\n').split('\t')
+				if not lowest and int(num):
+					lowest = int(ev)
+				d[1][int(ev)] = int(num)
+			highest = max([ev for ev, n in enumerate(d[1]) if n]) #highest ev with non-0 crosshits
+			data[c] = (lowest, highest, d)
+
+	for combo in combos:
+		print('Histogram: {:<50}'.format(combo), end='\r')
+		values = data[combo][2]
+
+		mi = data[combo][0] #(0) 30 or higher
+		ma = data[combo][1] #max 150
+
+		text = '''Distribution
+    min: {}
+    max: {}
+    average: {:.0f}
+    median: {:.0f}'''.format(mi, ma, np.mean(values[1][mi:ma]), np.median(values[1][mi:ma]))
+
+		fig = plt.figure(1, figsize=(12, 6))
+		ax = fig.add_subplot(1, 1, 1)
+		bars = ax.bar(values[0], values[1], width=1)
+
+		ax.text(0.05, 0.95, text, transform=ax.transAxes, horizontalalignment='left', verticalalignment='top')
+		ax.set_xlabel('E-value [10^-X]')
+		ax.set_ylabel('Number of crosshits')
+
+		fig.savefig('crosshits/{}-distribution.png'.format(combo))
+
+		fig.clear()
+
+
+tasknames = ['blast', 'parse', 'combine', 'comheat', 'unique', 'newick', 'attrib', 'hist', 'map', 'intheat', 'matrix', 'crosshits', 'crosshist']
 
 tasks = {'blast': ('run Blast', runBlast),
 'parse': ('parse Blast results', parseBlastResults),
@@ -1041,7 +1084,8 @@ tasks = {'blast': ('run Blast', runBlast),
 'map': ('create hit mapping diagrams for each protein', showBlastMapping),
 'intheat': ('create an interactive heatmap (html)', intHeatmap),
 'matrix': ('create a similarity matrix of all proteins', similarityMatrix),
-'crosshits': ('create files with all blast crosshits of cretain proteins', getCrosshits)}
+'crosshits': ('create files with all blast crosshits of cretain proteins', getCrosshits),
+'crosshist': ('creates Histograms of e-value distribution for crosshits', crossHistograms)}
 
 
 def runWorkflow(start, end=''):
