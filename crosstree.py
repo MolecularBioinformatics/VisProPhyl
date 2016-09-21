@@ -11,7 +11,7 @@ from taxfinder import TaxFinder
 
 class TreeMaker(object):
 
-	def __init__(self, tree, treefile, combo, prune, tf, bins=(30, 150, 5), sqrt = False, collapse = True, show_empty_species = True, startnode = None):
+	def __init__(self, tree, treefile, combo, prune, tf, bins, sqrt = False, collapse = True, show_empty_species = True, startnode = None):
 
 		if startnode is None:
 			self.t = tree
@@ -48,16 +48,31 @@ class TreeMaker(object):
 					tax = tf.getTaxID(acc)
 					self.elements[tax] = int(ev)
 
-		# self.featurelist: strs with feature names to be used (f_0, f_1, ...)
-		self.featurelist = ['f_{}'.format(i) for i in range(bins[2])]
 
-		# self.f_0, ... equals range of corresponding evalues (exp only)
-		steps = int((bins[1] - bins[0]) / bins[2])
-		for i, f in enumerate(self.featurelist):
-			setattr(self, f, set(range(bins[0] + steps*i, bins[0] + steps*(i+1))))
-		# extend last range up to bins[1]
-		lastf = getattr(self, self.featurelist[-1])
-		lastf.update(range(bins[1]-steps, bins[1]+1))
+		#self.featurelist list strs with feature names to be used (f_0, f_1, ...)
+		#the features of the top-level class (self.f_0, ...) equal a set-range of corresponding evalues (exponents only)
+
+		#add Support for complete custum e-value ranges:
+		if isinstance(bins, set):
+			self.featurelist = ['f_{}'.format(i) for i in range(len(bins)-1 )]
+			borders = sorted(list(bins))
+			for i, f in enumerate(self.featurelist):
+				setattr(self, f , set(range(borders[i], borders[i+1])))
+			#add last border to last feature-set
+			lastf = getattr(self, self.featurelist[-1])
+			lastf.add(borders[-1])
+
+
+		#autocalcualate bins for evalue ranges
+		else:
+			self.featurelist = ['f_{}'.format(i) for i in range(bins[2])]
+
+			steps = int((bins[1] - bins[0]) / bins[2])
+			for i, f in enumerate(self.featurelist):
+				setattr(self, f, set(range(bins[0] + steps*i, bins[0] + steps*(i+1))))
+			# extend last range up to bins[1], more than last one may be mssing due to rounding
+			lastf = getattr(self, self.featurelist[-1])
+			lastf.update(range(bins[1]-steps, bins[1]+1))
 
 
 		#min(getattr(self, f)), max(getattr(self, f))
@@ -332,14 +347,22 @@ if __name__ == '__main__':
 	parser.add_argument('-s', '--show', action='store_true', help='Show tree in ETE Tree Viewer (good for inspection)')
 	parser.add_argument('-o', '--outfile', default='', help='If a filename is given, save the tree to that file. Valid extensions are: svg, pdf, png')
 	parser.add_argument('-w', '--width', type=int, default=1000, help='Width of the resulting picture in pixels.')
-	parser.add_argument('-b', '--bins', type=int, default=[5], nargs=1, help='Number of bins/features to create for e-value range')
-	parser.add_argument('-r', '--range', type=int, nargs=2, default=[30,150], help='Range of evalues to use for bins')
+	parser.add_argument('-b', '--bins', type=int, default=[5], nargs=1, help='Number of bins/features to auto-creation of e-value ranges')
+	parser.add_argument('-r', '--ranges', type=int, nargs='+', default=[30,150], help='Min. 2 values. Either lower & upper bounds for ranges autocalculation, or multiple range borders')
 
 	args = parser.parse_args()
 
+	if len(args.ranges) == 2:
+		bins = args.ranges + args.bins
+	elif len(args.ranges) > 2:
+		bins = set(args.ranges)
+	else:
+		print('ranges option (-r) needs at least two values!')
+		sys.exit()
+
 	t = Tree(args.tree, format=8)
 
-	TM = TreeMaker(tree = t, treefile = args.tree, combo=args.combo, prune = args.prune, tf=TaxFinder(), bins=args.range+args.bins, sqrt = args.sqrt, collapse = not args.nocollapse, show_empty_species = args.empty, startnode = args.startnode)
+	TM = TreeMaker(tree = t, treefile = args.tree, combo=args.combo, prune = args.prune, tf=TaxFinder(), bins=bins, sqrt = args.sqrt, collapse = not args.nocollapse, show_empty_species = args.empty, startnode = args.startnode)
 
 	if args.show:
 		TM.showTree()
