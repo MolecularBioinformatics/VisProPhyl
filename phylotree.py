@@ -379,7 +379,10 @@ class TreeMaker(object):
 		if self.collapse:
 			toDelete = []
 			for n in self.t.traverse('postorder'):
-				if not n.is_leaf() and (len(n.get_sisters()) == 0 or len(n.children) == 1):
+				if n.is_leaf():
+					if not self.empty and n.total == 0 and n not in toPrune:
+						toDelete.append(n)
+				elif len(n.get_sisters()) == 0 or len(n.children) == 1:
 					toDelete.append(n)
 
 			for n in toDelete:

@@ -96,7 +96,7 @@ class TaxFinder():
 			taxinfo = self.taxdb[taxid]
 			taxinfo['taxid'] = taxid
 		except KeyError:
-			print('Taxid not found:', taxid)
+			#print('Taxid not found:', taxid)
 			taxinfo = {'taxid': 1, 'level': 0, 'parent': 0, 'rank': 'no rank', 'name': 'unclassified'}
 
 		return taxinfo
