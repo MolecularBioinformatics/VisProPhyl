@@ -62,7 +62,6 @@ class TreeMaker(object):
 			lastf = getattr(self, self.featurelist[-1])
 			lastf.add(borders[-1])
 
-
 		#autocalcualate bins for evalue ranges
 		else:
 			self.featurelist = ['f_{}'.format(i) for i in range(bins[2])]
@@ -70,7 +69,7 @@ class TreeMaker(object):
 			steps = int((bins[1] - bins[0]) / bins[2])
 			for i, f in enumerate(self.featurelist):
 				setattr(self, f, set(range(bins[0] + steps*i, bins[0] + steps*(i+1))))
-			# extend last range up to bins[1], more than last one may be mssing due to rounding
+			# extend last range up to bins[1], more than last one may be missing due to rounding
 			lastf = getattr(self, self.featurelist[-1])
 			lastf.update(range(bins[1]-steps, bins[1]+1))
 

@@ -29,6 +29,10 @@ class TreeMaker(object):
 		self.prune = prune
 		self.startnode = startnode
 
+
+
+		#### Config/feature_combinations ####
+
 		# Read tree attributes into dict
 		self.elements = {}
 		with open(self.attr, 'r') as f:
@@ -48,6 +52,8 @@ class TreeMaker(object):
 
 		self.counterElements = []
 
+		#######################################
+
 		# Colors for the features
 		#                          0          1          2          3          4          5          6          7
 		#                          A          B          C         A+B        A+C        B+C        all        none
@@ -65,9 +71,10 @@ class TreeMaker(object):
 
 		self.treeLayout()
 
+
 	# end __init__()
 
-
+	# for config/feature-combinations
 	def layout(self, node):
 		try:
 			percents = [round(100.0*node.f_a/node.total), round(100.0*node.f_b/node.total), round(100.0*node.f_c/node.total), round(100.0*node.f_ab/node.total), round(100.0*node.f_ac/node.total), round(100.0*node.f_bc/node.total), round(100.0*node.f_all/node.total), round(100.0*node.f_none/node.total)]
@@ -106,6 +113,7 @@ class TreeMaker(object):
 	# end layout
 
 
+	# for config/feature-combinations
 	def treeLayout(self):
 		# Add a tree style and a legend
 
@@ -162,6 +170,7 @@ class TreeMaker(object):
 	# end treeLayout
 
 
+	# for config/feature-combinations
 	def readConfig(self):
 		with open(self.config, 'r') as f:
 			for line in f:
@@ -208,6 +217,7 @@ class TreeMaker(object):
 	# end readConfig()
 
 
+	#universal
 	def readPruningFile(self):
 		self.pruneAfter = set()
 		self.pruneAfterChildren = set()
@@ -260,6 +270,7 @@ class TreeMaker(object):
 	# end readPruningFile()
 
 
+	# for config/feature-combinations
 	def addFeatures(self):
 		# Traverse the tree and add features to each node
 		for n in self.t.traverse('postorder'):
@@ -326,6 +337,7 @@ class TreeMaker(object):
 	# end addFeatures()
 
 
+	#universal
 	def pruneTree(self):
 		# Start pruning the tree
 

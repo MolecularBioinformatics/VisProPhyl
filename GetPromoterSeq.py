@@ -234,7 +234,8 @@ def loadPromoterSeq(protein, lenght=1500):
                                    seq_stop=end)
             record = SeqIO.read(handle, "fasta")
             record.id = 'ref|{}|{}-{}'.format(genome_acc, lline[3], lline[4])
-            record.description = "promoter of "+lline[7]+"|protein "+lline[0]+"|tax-id "+tax
+            name = lline[7].replace(':', '').replace('(', '').replace(')', '')
+            record.description = "promoter of "+name+"|protein "+lline[0]+"|tax-id "+tax
 
             with open('Promoters/PromoterSeqs_{}/{}.fasta'.format(protein, lline[6]+'_'+tax), 'w') as out:
                 SeqIO.write(record, out, 'fasta')
