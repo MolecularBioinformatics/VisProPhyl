@@ -34,6 +34,11 @@ class TreeMaker(object):
 		#                          0          1          2          3          4          5          6          7
 		#                          A          B          C         A+B        A+C        B+C        all        none
 		self.standardcolors = ['#AA0000', '#00AA00', '#55AAFF', '#DDDD00', '#AA00AA', '#3333FF', '#000000', '#c8c8c8']
+		# Always added grey last for better support of 'empty' flag	- TODO actually implement usage
+		self.colors_06 = ['#e41a1c','#377eb8','#4daf4a','#984ea3','#ff7f00','#ffff33', '#e0e0e0']
+		self.colors_10 = ['#a6cee3','#1f78b4','#b2df8a','#33a02c','#fb9a99','#e31a1c','#fdbf6f','#ff7f00','#cab2d6','#6a3d9a', '#e0e0e0']
+		self.colors_14 = ['#a6cee3','#1f78b4','#b2df8a','#33a02c','#fb9a99','#e31a1c','#fdbf6f','#ff7f00','#cab2d6','#6a3d9a','#ffff99','#b15928', '#000000', '#e0e0e0']
+
 
 		# data should be read into self.elements (dict)
 
@@ -88,6 +93,7 @@ class TreeMaker(object):
 
 
 	# Exemplary minimal function to be subclassed, (better) keep the non-commented code from here
+	# Optional TODO: could be generalised by using the self.featurelist for the legend and adding a list for the used files
 	def treeLayout(self):
 		# Add a tree style and a legend
 
@@ -538,7 +544,7 @@ class Crosshits(TreeMaker):
 		self.combo = combo
 		tf = TaxFinder()
 
-		self.colors = self.standardcolors
+
 
 		# Read tree attributes into dict
 		self.elements = {}
@@ -555,7 +561,7 @@ class Crosshits(TreeMaker):
 
 		# add Support for complete custum e-value ranges:
 		if isinstance(bins, set):
-			self.featurelist = ['f_{}'.format(i) for i in range(len(bins) - 1)]
+			self.featurelist = ['f_{:02d}'.format(i) for i in range(len(bins) - 1)]
 			borders = sorted(list(bins))
 			for i, f in enumerate(self.featurelist):
 				setattr(self, f, set(range(borders[i], borders[i + 1])))
@@ -565,7 +571,7 @@ class Crosshits(TreeMaker):
 
 		# autocalcualate bins for evalue ranges
 		else:
-			self.featurelist = ['f_{}'.format(i) for i in range(bins[2])]
+			self.featurelist = ['f_{:02d}'.format(i) for i in range(bins[2])]
 
 			steps = int((bins[1] - bins[0]) / bins[2])
 			for i, f in enumerate(self.featurelist):
@@ -574,9 +580,19 @@ class Crosshits(TreeMaker):
 			lastf = getattr(self, self.featurelist[-1])
 			lastf.update(range(bins[1] - steps, bins[1] + 1))
 
-		# If not enough colors are given
-		while len(self.colors) < len(self.featurelist):
-			self.colors += self.colors
+		#use different range of colors depeding on number of features
+		if len(self.featurelist) <= 6:
+			self.colors = self.colors_06
+		elif len(self.featurelist) <= 10:
+			self.colors = self.colors_10
+		elif len(self.featurelist) <= 14:
+			self.colors = self.colors_14
+		else:
+			self.colors = self.colors_10[:10]
+			while len(self.colors) + 2 < len(self.featurelist):
+				self.colors += self.colors_10[:10]
+			self.colors += self.colors_14[-2:]
+
 
 		self.featurenames = ['e-values between 1e-{} and 1e-{}'.format(min(getattr(self, f)), max(getattr(self, f))) for f in self.featurelist]
 
@@ -738,19 +754,25 @@ class Clusters(TreeMaker):
 				for entry in cluster:
 					tax = int(entry.split('^')[1])
 					if tax in self.elements:
-						self.elements[tax] += ['f_{}'.format(i)]
+						self.elements[tax] += ['f_{:02d}'.format(i)]
 					else:
-						self.elements[tax] = ['f_{}'.format(i)]
+						self.elements[tax] = ['f_{:02d}'.format(i)]
 
 				self.featurelist.append('f_{}'.format(i))
 				setattr(self, 'f_{}'.format(i), [n.split('^')[0] for n in cluster])
 
-		# for f in self.featurelist:
-		# 	print(f, getattr(self, f))
-
-		# If not enough colors are given
-		while len(self.colors) < len(self.featurelist):
-			self.colors += self.colors
+		#use different range of colors depeding on number of features
+		if len(self.featurelist) <= 6:
+			self.colors = self.colors_06
+		elif len(self.featurelist) <= 10:
+			self.colors = self.colors_10
+		elif len(self.featurelist) <= 14:
+			self.colors = self.colors_14
+		else:
+			self.colors = self.colors_10[:10]
+			while len(self.colors) + 2 < len(self.featurelist):
+				self.colors += self.colors_10[:10]
+			self.colors += self.colors_14[-2:]
 
 		self.featurenames = ['Cluster Nr: {}'.format(f[2:]) for f in self.featurelist]
 
@@ -889,7 +911,7 @@ if __name__ == '__main__':
 
 	parser = argparse.ArgumentParser(description='Create a tree with piecharts. Different modes are supported: *combination* of proteins, *crosshit* e-value distribution, Protein *cluster* distributons.', add_help=False)
 
-	subparsers = parser.add_subparsers(title='Modes', description='Use phylotree.py <mode> -h for a full help with all flags/arguments', dest='mode')
+	subparsers = parser.add_subparsers(title='Modes', dest='mode')
 
 	parser_co = subparsers.add_parser('combination', aliases=['com'], help='Show which given feature/protein combinations are present for each node.')
 	parser_cr = subparsers.add_parser('crosshit', aliases=['cross'], help='Show the e-value distribuiton over a given range for each node')
@@ -967,7 +989,7 @@ if __name__ == '__main__':
 	generalargs = {'tree': t, 'treefile': args.tree, 'prune': args.prune, 'sqrt': args.sqrt, 'collapse': not args.nocollapse, 'show_empty_species': args.empty, 'startnode': args.startnode, 'countTotal': args.count_total}
 
 	if not args.mode:
-		print('Giving the mode argument is required. See --help for more information. \nValid modes are: combination (com), crosshit (cross)')
+		print('Giving the mode argument is required. See --help for more information. \nValid modes are: combination (com), crosshit (cross), cluster (cl)')
 		sys.exit()
 
 	elif args.mode.startswith('com'):

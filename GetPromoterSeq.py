@@ -174,6 +174,7 @@ def extractPromoterPos(protein):
                         continue
 
                     accs.remove(lline[10])
+
                     outl = [lline[10], tax, lline[6], lline[7], lline[8], lline[9], lline[14], lline[13]]
                     out.write('\t'.join(outl)+'\n')
 
@@ -195,13 +196,16 @@ def loadPromoterSeq(protein, lenght=1500):
     entries = set()
     os.makedirs('Promoters/PromoterSeqs_{}'.format(protein),exist_ok=True)
 
-    with open('Promoters/{}_hitfeatures.tsv'.format(protein), 'r') as f:
+    with open('Promoters/{}_hitfeatures.tsv'.format(protein), 'r') as f, open('Promoters/PromoterSeqs_{}/annotation.tsv'.format(protein), 'w') as annotation:
         next(f)
+        annotation.write('#Protein-Acc\tTaxID\tGenomic-Acc\tStart-Pos\tEnd-Pos\tstrand\tGene symbol\tGene name\n')
         for i, line in enumerate(f):
             lline = line.rstrip().split('\t')
+            #lline: protein, taxid, genomicacc, start, end, strand, symbol, name
+
             tax, genome_acc, start, end, strand = lline[1:6]
 
-            #Multiple proteins may come from one gene
+            #Multiple proteins may come from one (unique) genomic locus
             entry = (tax, genome_acc, start, end)
             if entry in entries:
                 continue
@@ -209,10 +213,10 @@ def loadPromoterSeq(protein, lenght=1500):
                 entries.add(entry)
 
             #Dont load same sequence again - mostly for test use
-            #if os.path.isfile('PromoterSeqs_{}/{}.fasta'.format(protein, lline[6]+'_'+tax)):
+            #if os.path.isfile('PromoterSeqs_{}/{}.fasta'.format(protein, lline[6]+'_'+tax)): # / lline[0]
                 #continue
 
-            print('Downloading promoter sequences for hits of {}. Found: {} ({} multiple){:<8}'.format(protein, len(entries), i-len(entries), ''), end='\r')
+            print('Downloading promoter sequences for hits of {}. Found: {} ({} multiple){:<6}'.format(protein, len(entries), i-len(entries), ''), end='\r')
 
             #start from the *_hitfeatures file is the CDS start, we want region downstream of that
             if strand == '+':
@@ -233,12 +237,16 @@ def loadPromoterSeq(protein, lenght=1500):
                                    seq_start=start,
                                    seq_stop=end)
             record = SeqIO.read(handle, "fasta")
-            record.id = 'ref|{}|{}-{}'.format(genome_acc, lline[3], lline[4])
-            name = lline[7].replace(':', '').replace('(', '').replace(')', '')
-            record.description = "promoter of "+name+"|protein "+lline[0]+"|tax-id "+tax
 
-            with open('Promoters/PromoterSeqs_{}/{}.fasta'.format(protein, lline[6]+'_'+tax), 'w') as out:
+            #Only short header in fasta file
+            record.id = 'promoter|{}'.format(lline[0])
+            record.description = ''
+
+            with open('Promoters/PromoterSeqs_{}/{}.fasta'.format(protein, lline[0]), 'w') as out:
                 SeqIO.write(record, out, 'fasta')
+
+            #Complete Information in annotation file
+            annotation.write('\t'.join(lline)+'\n')
 
 
 
