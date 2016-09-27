@@ -291,13 +291,13 @@ def clusterout(anFN, outFN):
 
 	mapping = {}
 
- 	with open(anFN, 'r') as f:
+	with open(anFN, 'r') as f:
 		#The elements of order *should* be the fasta-headers/Newick names (without '>')
-		elements = order.copy()
+		elements = list(map(lambda x: x.split('|')[1], order))
 		next(f)
 		for l in f:
 			lline = l.rstrip().split('\t')
-			if lline[0] in order:
+			if lline[0] in elements:
 				mapping[lline[0]] = lline[1]
 
 
@@ -305,7 +305,7 @@ def clusterout(anFN, outFN):
 		out.write('# Names/Acc-IDs/... of MSA sequences sorted by clusters. Each lines containes comma separated entries for one cluster.\n')
 		out.write("# Order of clusters is defined by Newick file '{}', unless the -o (--order) option was given to msa_viewer this also corresponds to the top-down order of the result picture.\n".format(newickFile))
 		for cluster in clusterlist:
-			out.write(','.join(list(map(lambda x: x+'^'+mapping[x], cluster)))+'\n')
+			out.write(','.join(list(map(lambda x: x.split('|')[1]+'^'+mapping[x.split('|')[1]], cluster)))+'\n')
 
 
 if saveclusters:
