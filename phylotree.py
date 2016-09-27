@@ -758,8 +758,8 @@ class Clusters(TreeMaker):
 					else:
 						self.elements[tax] = ['f_{:02d}'.format(i)]
 
-				self.featurelist.append('f_{}'.format(i))
-				setattr(self, 'f_{}'.format(i), [n.split('^')[0] for n in cluster])
+				self.featurelist.append('f_{:02d}'.format(i))
+				setattr(self, 'f_{:02d}'.format(i), [n.split('^')[0] for n in cluster])
 
 		#use different range of colors depeding on number of features
 		if len(self.featurelist) <= 6:
