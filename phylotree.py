@@ -30,30 +30,49 @@ class TreeMaker(object):
 		self.startnode = startnode
 		self.count = countTotal
 
-		# Colors for the features
-		#                          0          1          2          3          4          5          6          7
-		#                          A          B          C         A+B        A+C        B+C        all        none
+		## Colors for the features
+		##                         0          1          2          3          4          5          6          7
+		##                         A          B          C         A+B        A+C        B+C        all        none
 		self.standardcolors = ['#AA0000', '#00AA00', '#55AAFF', '#DDDD00', '#AA00AA', '#3333FF', '#000000', '#c8c8c8']
-		# Always added grey last for better support of 'empty' flag	- TODO actually implement usage
-		self.colors_06 = ['#e41a1c','#377eb8','#4daf4a','#984ea3','#ff7f00','#ffff33', '#e0e0e0']
-		self.colors_10 = ['#a6cee3','#1f78b4','#b2df8a','#33a02c','#fb9a99','#e31a1c','#fdbf6f','#ff7f00','#cab2d6','#6a3d9a', '#e0e0e0']
-		self.colors_14 = ['#a6cee3','#1f78b4','#b2df8a','#33a02c','#fb9a99','#e31a1c','#fdbf6f','#ff7f00','#cab2d6','#6a3d9a','#ffff99','#b15928', '#000000', '#e0e0e0']
+
+		## some more colors from colorbrewer2.org, last set edited a bit
+		## This allows a better of different colors & additional support for the empty feature
+		self.emptycolor = '#c8c8c8'
+		self.colors_small = ['#e41a1c','#377eb8','#4daf4a','#984ea3','#ff7f00','#ffff33']
+		self.colors_big = ['#a6cee3','#1f78b4','#b2df8a','#33a02c','#fb9a99','#e31a1c','#fdbf6f','#ff7f00','#cab2d6','#6a3d9a','#ffffb3', '#ffea4d', '#b15928', '#000000',]
 
 
-		# data should be read into self.elements (dict)
+		## Data should be read into self.elements (dict)
 
-		# These functions should be called (in order) at the end of the init() of each *child* class
-		# Optional TODO: always call this init *after* child specific init part and thereby run the following functions
+		## These functions should be called (in order) at the end of the init() of each *child* class
+		## Optional TODO: always call this init *after* child specific init part and thereby run the following functions
 
 		#self.addFeatures()
 		#self.readPruningFile()
 		#self.pruneTree()
 		#self.treeLayout()
 
+		## This code is helpful for if using an arbitrary number of features:
+
+		# # use different range of colors depeding on number of features
+		# if len(self.featurelist) <= 6:
+		# 	self.colors = self.colors_small
+		# elif len(self.featurelist) <= 14:
+		# 	self.colors = self.colors_big
+		# else:
+		#	self.colors = self.colors_big
+		# 	print('Number of features exceeds maximum number of supported colors (14)! Reusing colors.')
+		# 	while len(self.colors) < len(self.featurelist):
+		# 		self.colors += self.colors_big
+		# # make self.colors as long as the featurelist + grey to support empty
+		# self.colors = self.colors[0:len(self.featurelist)]
+		# self.colors += [self.emptycolor]
+
 	# end __init__()
 
 
 	# Exemplary minimal function to be subclassed, (better) keep the non-commented code from here
+	# Optional TODO: could be generalised by using the self.featurelist, thereby restricting all subclasses to PieCharts
 	def layout(self, node):
 		######  How to make PieCharts:	############################################
 		# try:
@@ -79,7 +98,7 @@ class TreeMaker(object):
 
 		if self.count:
 			cnt = node.total
-			txt = TextFace(' {}\n {:.2f}'.format(node.plainName, cnt), ftype='Arial', fgcolor=fgcol)
+			txt = TextFace(' {}\n {:d}'.format(node.plainName, cnt), ftype='Arial', fgcolor=fgcol)
 		else:
 			txt = TextFace(' ' + node.plainName, ftype='Arial', fgcolor=fgcol)
 		#############################################################################
@@ -400,7 +419,7 @@ class Combinations(TreeMaker):
 				txt = TextFace(' {}\n {:.2f}'.format(node.plainName, cnt), ftype='Arial', fgcolor=fgcol)
 			elif self.count:
 				cnt = node.total
-				txt = TextFace(' {}\n {:.2f}'.format(node.plainName, cnt), ftype='Arial', fgcolor=fgcol)
+				txt = TextFace(' {}\n {:d}'.format(node.plainName, cnt), ftype='Arial', fgcolor=fgcol)
 			else:
 				txt = TextFace(' ' + node.plainName, ftype='Arial', fgcolor=fgcol)
 			#txt.margin_right = -30
@@ -537,6 +556,7 @@ class Combinations(TreeMaker):
 # end Combinations class
 
 
+## While originally intended for crosshits, this basically takes protein IDs with e-values & shows the distribution. Rename it ??
 class Crosshits(TreeMaker):
 	def __init__(self, combo, bins, **kwargs):
 		TreeMaker.__init__(self, **kwargs)
@@ -582,17 +602,17 @@ class Crosshits(TreeMaker):
 
 		#use different range of colors depeding on number of features
 		if len(self.featurelist) <= 6:
-			self.colors = self.colors_06
-		elif len(self.featurelist) <= 10:
-			self.colors = self.colors_10
+			self.colors = self.colors_small
 		elif len(self.featurelist) <= 14:
-			self.colors = self.colors_14
+			self.colors = self.colors_big
 		else:
-			self.colors = self.colors_10[:10]
-			while len(self.colors) + 2 < len(self.featurelist):
-				self.colors += self.colors_10[:10]
-			self.colors += self.colors_14[-2:]
-
+			print('Number of features exceeds maximum number of supported colors (14)! Reusing colors.')
+			self.colors = self.colors_big
+			while len(self.colors) < len(self.featurelist):
+				self.colors += self.colors_big
+		#make self.colors as long as the featurelist + grey to support empty
+		self.colors = self.colors[0:len(self.featurelist)]
+		self.colors += [self.emptycolor]
 
 		self.featurenames = ['e-values between 1e-{} and 1e-{}'.format(min(getattr(self, f)), max(getattr(self, f))) for f in self.featurelist]
 
@@ -630,7 +650,7 @@ class Crosshits(TreeMaker):
 
 			if self.count:
 				cnt = node.total
-				txt = TextFace(' {}\n {:.2f}'.format(node.plainName, cnt), ftype='Arial', fgcolor=fgcol)
+				txt = TextFace(' {}\n {:d}'.format(node.plainName, cnt), ftype='Arial', fgcolor=fgcol)
 			else:
 				txt = TextFace(' ' + node.plainName, ftype='Arial', fgcolor=fgcol)
 
@@ -659,7 +679,7 @@ class Crosshits(TreeMaker):
 			self.ts.legend.add_face(TextFace(name), column=1)
 
 		if self.empty:
-			self.ts.legend.add_face(CircleFace(10, self.colors[7]), column=0)
+			self.ts.legend.add_face(CircleFace(10, self.colors[-1]), column=0)
 			self.ts.legend.add_face(TextFace('none'), column=1)
 
 		self.ts.legend.add_face(TextFace(datetime.now().strftime('%a, %d.%m.%Y; %H:%M:%S'), fsize=8), column=1)
@@ -732,9 +752,9 @@ class Clusters(TreeMaker):
 
 		self.colors = self.standardcolors
 
-		# Read tree attributes & clusters from file
-		# self.featurelist list strs with feature names to be used (f_0, f_1, ...)
-		# the features of the top-level class (self.f_0, ...) poinst to a list with the accession ids for this cluster
+		# Read tree attributes (= clusters) from file
+		# self.featurelist list strs with feature names to be used (f_00, f_01, ...)
+		# the features of the top-level class (self.f_00, ...) poinst to a list with the accession ids for this cluster
 
 		self.elements = {}
 		self.featurelist = []
@@ -763,16 +783,17 @@ class Clusters(TreeMaker):
 
 		#use different range of colors depeding on number of features
 		if len(self.featurelist) <= 6:
-			self.colors = self.colors_06
-		elif len(self.featurelist) <= 10:
-			self.colors = self.colors_10
+			self.colors = self.colors_small
 		elif len(self.featurelist) <= 14:
-			self.colors = self.colors_14
+			self.colors = self.colors_big
 		else:
-			self.colors = self.colors_10[:10]
-			while len(self.colors) + 2 < len(self.featurelist):
-				self.colors += self.colors_10[:10]
-			self.colors += self.colors_14[-2:]
+			print('Number of features exceeds maximum number of supported colors (14)! Reusing colors.')
+			self.colors = self.colors_big
+			while len(self.colors) < len(self.featurelist):
+				self.colors += self.colors_big
+		#make self.colors as long as the featurelist + grey to support empty
+		self.colors = self.colors[0:len(self.featurelist)]
+		self.colors += [self.emptycolor]
 
 		self.featurenames = ['Cluster Nr: {}'.format(f[2:]) for f in self.featurelist]
 
@@ -789,7 +810,7 @@ class Clusters(TreeMaker):
 
 	def layout(self, node):
 		try:
-			percents = [round(100.0 * getattr(node, f) / node.total) for f in self.featurelist] + [round(100.0 * node.f_none / node.total)]
+				percents = [round(100.0 * getattr(node, f) / node.total) for f in self.featurelist] + [round(100.0 * node.f_none / node.total)]
 		except ZeroDivisionError:
 			txt = TextFace(' ' + node.plainName, ftype='Arial', fgcolor='#000000')
 		else:
@@ -810,7 +831,7 @@ class Clusters(TreeMaker):
 
 			if self.count:
 				cnt = node.total
-				txt = TextFace(' {}\n {:.2f}'.format(node.plainName, cnt), ftype='Arial', fgcolor=fgcol)
+				txt = TextFace(' {}\n {:d}'.format(node.plainName, cnt), ftype='Arial', fgcolor=fgcol)
 			else:
 				txt = TextFace(' ' + node.plainName, ftype='Arial', fgcolor=fgcol)
 
@@ -838,9 +859,8 @@ class Clusters(TreeMaker):
 			self.ts.legend.add_face(CircleFace(10, color), column=0)
 			self.ts.legend.add_face(TextFace(name), column=1)
 
-		# This should use a different color
 		if self.empty:
-			self.ts.legend.add_face(CircleFace(10, self.colors[7]), column=0)
+			self.ts.legend.add_face(CircleFace(10, self.colors[-1]), column=0)
 			self.ts.legend.add_face(TextFace('none'), column=1)
 
 		self.ts.legend.add_face(TextFace(datetime.now().strftime('%a, %d.%m.%Y; %H:%M:%S'), fsize=8), column=1)
@@ -983,6 +1003,8 @@ if __name__ == '__main__':
 
 		sys.exit()
 
+	# if mode == clsuter and args.tree == 'general.tre':
+	# 	args.tree = 'refseq_default_tree.tre'
 
 	t = Tree(args.tree, format=8)
 
@@ -1009,6 +1031,7 @@ if __name__ == '__main__':
 		useTree = Crosshits
 
 	elif args.mode.startswith('cl'):
+
 		extraargs = {'filename': args.clusters, 'dropclusters': args.dropclusters}
 		useTree = Clusters
 
