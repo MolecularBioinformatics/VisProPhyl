@@ -13,7 +13,7 @@ from Bio.Blast import NCBIXML
 from Bio.Blast.Applications import NcbiblastpCommandline
 from multiprocessing import cpu_count
 from taxfinder import TaxFinder
-
+from collections import defaultdict
 
 class ConfigReader():
 	'''
@@ -960,12 +960,12 @@ def intHeatmap():
 		out.write(f)
 
 
-#adapted from similarityMatrix
-def getCrosshits(doOnly = None):
+# adapted from similarityMatrix
+def getCrosshits(doOnly = None, crosscrosshits = False):
 	'''
 	For each pair of proteins creates a file '{protein1}-{protein2}-crosshits.tsv'
-	File has three columns: e-value, number of crosshits, AccIDs of crosshits (comma-separated)
-	Will use proteins in doOnly or 'crosshits.txt' (1 per line).
+	File has three columns: e-value, number of crosshits, AccID^TaxID for all crosshits (comma-separated)
+	Will use the config file 'crosshits.txt', unless given a list of proteins in 'doOnly'.
 
 	:param doOnly: Should be an iterable with proteinnames that shall be used. If it's Falsy proteins in 'crosshits.txt' will be used instead.
 	:creates: `crosshits/*.tsv`
@@ -977,15 +977,28 @@ def getCrosshits(doOnly = None):
 		with open('crosshits.txt', 'r') as f:
 			li = list()
 			for line in f:
-				line = line.rstrip('\n')
-				if line.startswith('#'):
+				line = line.rstrip('\n').split('#')[0]
+				# no empty lines
+				if not line:
 					continue
-				elif line:  # no empty lines
-					li += [line]
+
+				# This is the only '!...' parameter right now, more could be added
+				if line.startswith('!'):
+					if line[1:] == 'crosscrosshits':
+						crosscrosshits = True
+						groups = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 50]
+					if line[1:] == 'groups':
+						groups = sorted(list(map(int, line[1:].split())))
+					continue
+
+				li += [line]
 
 	os.makedirs('crosshits', exist_ok=True)
 
 	values = {}
+	#set is important! the combined tables dont have unique entries
+	taxids = defaultdict(set)
+
 	for name in li:
 		values[name] = [set() for _ in range(151)]
 		with open('combinedtables/{}.tsv'.format(name), 'r') as f:
@@ -1002,13 +1015,17 @@ def getCrosshits(doOnly = None):
 				else:
 					evalue = 0
 				acc = lline[1]
-				values[name][evalue].add(acc)
+				tax = lline[0]
+				#Adding TaxID for later use, Acc-IDs are already unique (and implicate tax-id) so this should change anything
+				values[name][evalue].add(acc+'^'+tax)
+				if crosscrosshits:
+					taxids[tax].add(acc)
 
 	names = sorted(values.keys())
 
 	for i, name1 in enumerate(names):
 		for name2 in names[i:]: #skips symmetric combinations
-			if name1 == name2:  #dont want that
+			if name1 == name2:  #dont need that either
 				continue
 			acc1 = set()
 			acc2 = set()
@@ -1022,10 +1039,38 @@ def getCrosshits(doOnly = None):
 				oldhits.update(inter)
 
 			with open("crosshits/{0}-{1}.tsv".format(name1, name2), "w") as outf:
-				outf.write('e-value\tnumber-of-crosshits\tAccIDs\n')
+				outf.write('#e-value\tnumber-of-crosshits\tAccID^TaxID comma-sep\n')
 				for j, line in enumerate(common):
 					vals = (j, len(line), ",".join(list(line)))
 					outf.write('{0}\t{1}\t{2}\n'.format(*vals))
+
+			if crosscrosshits:
+				last = []
+				cchits = defaultdict(list)
+				for tax, accs in taxids.items():
+					for n in groups:
+						if len(accs) <= n:
+							cchits[n].append(tax)
+							break
+					else:
+						last = [groups[-1]+1]
+						cchits[groups[-1]+1].append(tax)
+
+				with open("crosshits/{0}-{1}-crosscrosshits.csv".format(name1, name2), "w") as out:
+					out.write('#This file contains clusters of crosscrosshits\n')
+					for n in groups+last:
+						if n in last:
+							out.write('!>{} crosshits per species\n'.format(n-1))
+						elif n-1 and n-1 not in groups:
+							if groups.index(n):
+								lower = groups[groups.index(n) - 1] + 1
+							else:
+								lower = 1
+							out.write('!{} - {} crosshits per species\n'.format(lower, n))
+						else:
+							out.write('!{} crosshits per species\n'.format(n))
+
+						out.write(','.join(cchits[n])+'\n')
 
 
 def crossHistograms():

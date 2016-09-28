@@ -7,7 +7,6 @@ from operator import add
 from matplotlib import colors as mpl_colors
 from matplotlib import cm as mpl_colormap
 from datetime import datetime
-from taxfinder import TaxFinder
 
 
 class TreeMaker(object):
@@ -562,19 +561,20 @@ class Crosshits(TreeMaker):
 		TreeMaker.__init__(self, **kwargs)
 
 		self.combo = combo
-		tf = TaxFinder()
-
-
 
 		# Read tree attributes into dict
 		self.elements = {}
 		with open(self.combo, 'r') as f:
-			next(f)
 			for line in f:
-				ev, num, accs = line.rstrip('\n').split('\t')
-				for acc in accs.split(','):
-					tax = tf.getTaxID(acc)
-					self.elements[tax] = int(ev)
+				line = line.rstrip('\n').split('#')[0]
+
+				ev, num, entries = line.split('\t')
+				for entry in entries.split(','):
+					acc, tax = entry.split('^')
+					if tax in self.elements:
+						self.elements[tax] += [int(ev)]
+					else:
+						self.elements[tax] = [int(ev)]
 
 		# self.featurelist list strs with feature names to be used (f_0, f_1, ...)
 		# the features of the top-level class (self.f_0, ...) equal a set-range of corresponding evalues (exponents only)
@@ -695,6 +695,7 @@ class Crosshits(TreeMaker):
 
 	def addFeatures(self):
 		# Traverse the tree and add features to each node
+
 		for n in self.t.traverse('postorder'):
 			if n.name == 'NoName' or not n.name:
 				n.name = 'Biota^1'
@@ -708,26 +709,38 @@ class Crosshits(TreeMaker):
 			n.add_features(f_none=0)
 			n.add_features(total=0)
 
+
+
 			if n.is_leaf():
 				countThis = True
+				i = 0
 				try:
 					# Tree is derived from one protein, therefore it has more entries than crosshits
-					ev = self.elements[n.taxid]
-					for f in self.featurelist:
-						if ev in getattr(self, f):
-							# n.'f' += 1
-							setattr(n, f, getattr(n, f) + 1)
-							break
+					# There may be multiple evalues ('cross-crosshits') per species
+					evs = self.elements[n.taxid].copy()
+
+					if len(evs) > 1:
+						print(n.taxid, len(evs))
+
+					while evs:
+						ev = evs.pop()
+						i += 1
+						for f in self.featurelist:
+							if ev in getattr(self, f):
+								# n.'f' += 1
+								setattr(n, f, getattr(n, f) + 1)
+								break
 
 				except KeyError:
 					# no crosshit at this leaf
 					if self.empty:
+						i += 1
 						n.f_none += 1
 					else:
 						countThis = False
 
 				if countThis:
-					n.total += 1
+					n.total += i
 
 			else:
 				for x in n.children:
@@ -743,6 +756,9 @@ class Crosshits(TreeMaker):
 # end Crosshits class
 
 
+# ToDo add better description of file properties - where?
+# supports comments(#), one cluster per line (tax or acc^tax, comma separated), !Clustername in extra line above the actual Cluster
+
 class Clusters(TreeMaker):
 	def __init__(self, filename, dropclusters, **kwargs):
 		TreeMaker.__init__(self, **kwargs)
@@ -754,10 +770,13 @@ class Clusters(TreeMaker):
 
 		# Read tree attributes (= clusters) from file
 		# self.featurelist list strs with feature names to be used (f_00, f_01, ...)
+
 		# the features of the top-level class (self.f_00, ...) poinst to a list with the accession ids for this cluster
+		# this is actually not even needed - taxids in clusters are the only thing the script needs
 
 		self.elements = {}
 		self.featurelist = []
+		self.featurenames = {}
 
 		with open(self.loadfile, 'r') as f:
 			i = 0
@@ -766,13 +785,23 @@ class Clusters(TreeMaker):
 				if not line:
 					continue
 
-				i = i+1
+				i = i + 1
 				if i in self.dontuse:
+					continue
+
+				#Allows definition of cluster names in file
+				if line.startswith('!'):
+					self.featurenames['f_{:02d}'.format(i)] = line[1:]
+					i -= 1
 					continue
 
 				cluster = line.split(',')
 				for entry in cluster:
-					tax = int(entry.split('^')[1])
+					if '^' in entry:
+						tax = int(entry.split('^')[1])
+					else:
+						tax = int(entry)
+
 					if tax in self.elements:
 						self.elements[tax] += ['f_{:02d}'.format(i)]
 					else:
@@ -795,7 +824,9 @@ class Clusters(TreeMaker):
 		self.colors = self.colors[0:len(self.featurelist)]
 		self.colors += [self.emptycolor]
 
-		self.featurenames = ['Cluster Nr: {}'.format(f[2:]) for f in self.featurelist]
+		for f in self.featurelist:
+			if f not in self.featurenames:
+				self.featurenames[f] ='Cluster Nr: {}'.format(f[2:])
 
 		self.addFeatures()
 
@@ -855,9 +886,9 @@ class Clusters(TreeMaker):
 
 		self.ts.legend_position = 4
 
-		for name, color in zip(self.featurenames, self.colors):
+		for feature, color in zip(sorted(self.featurenames.keys()), self.colors):
 			self.ts.legend.add_face(CircleFace(10, color), column=0)
-			self.ts.legend.add_face(TextFace(name), column=1)
+			self.ts.legend.add_face(TextFace(self.featurenames[feature]), column=1)
 
 		if self.empty:
 			self.ts.legend.add_face(CircleFace(10, self.colors[-1]), column=0)
