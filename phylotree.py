@@ -567,14 +567,19 @@ class Crosshits(TreeMaker):
 		with open(self.combo, 'r') as f:
 			for line in f:
 				line = line.rstrip('\n').split('#')[0]
+				if not line:
+					continue
 
 				ev, num, entries = line.split('\t')
+
 				for entry in entries.split(','):
+					if not entry:
+						continue
 					acc, tax = entry.split('^')
 					if tax in self.elements:
-						self.elements[tax] += [int(ev)]
+						self.elements[int(tax)] += [int(ev)]
 					else:
-						self.elements[tax] = [int(ev)]
+						self.elements[int(tax)] = [int(ev)]
 
 		# self.featurelist list strs with feature names to be used (f_0, f_1, ...)
 		# the features of the top-level class (self.f_0, ...) equal a set-range of corresponding evalues (exponents only)
@@ -756,7 +761,7 @@ class Crosshits(TreeMaker):
 # end Crosshits class
 
 
-# ToDo add better description of file properties - where?
+# ToDo: add better description of file properties - where?
 # supports comments(#), one cluster per line (tax or acc^tax, comma separated), !Clustername in extra line above the actual Cluster
 
 class Clusters(TreeMaker):
