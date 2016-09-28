@@ -1047,9 +1047,10 @@ def getCrosshits(doOnly = None, crosscrosshits = False):
 			if crosscrosshits:
 				last = []
 				cchits = defaultdict(list)
-				for tax, accs in taxids.items():
+				for entry in oldhits:
+					tax = entry.split('^')[1]
 					for n in groups:
-						if len(accs) <= n:
+						if len(taxids[tax]) <= n:
 							cchits[n].append(tax)
 							break
 					else:
