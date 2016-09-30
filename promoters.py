@@ -15,7 +15,7 @@ from scipy.stats.mstats import gmean
 #	- all proteins that should be used
 # 	- make & use appropiated subfolders
 
-# Optional: change all scripts (really all of them) to always use acc^tax, instead of saving the tax information in the annotation files
+# TODO: change all scripts (really all of them) to always use acc^tax (or another consequent format) [instead of saving the tax information in the annotation files]
 
 
 def _pw_distance(seqs, names):
@@ -52,12 +52,20 @@ def _similarity(seq1, seq2):
 			score += 0.1
 
 	if score:
-		return score
+		# raw score (normalise to full lenght, identical for all seqs because of gaps, length w/o gaps is also identical for all)
+		# return score/len(seq1)
+
+		# Normalise to overlapping lenght (w/ gaps): diff(min(start(seq1, seq2)), max(end(seq1, seq2)))
+		first = lambda x: min(x.find(i) for i in alphabet if x.find(i)!=-1)
+		last = lambda x: len(x) - first(x[::-1])
+		return score / (max(last(seq1), last(seq2)) - min(first(seq1), first(seq2)))
+
+
 	else:
 		return np.NaN
 
 
-def autosort(fname, verbosity=True):
+def autosort(fname, drop, verbosity=True):
 	seqs = []
 	names = []
 	with open(fname, 'r') as f:
@@ -104,10 +112,17 @@ def autosort(fname, verbosity=True):
 
 	keep = list(matrix.index)
 
+	i = 0
+
 	with open(fname, 'r') as f, open(fname.split('.fasta')[0]+'_kept.fasta', 'w') as out, open(fname.split('.fasta')[0]+'_dropped.fasta', 'w') as out2:
 		for line in f:
 			if line.startswith('>'):
-				keeping = line.rstrip().split('|')[1] in keep
+				name = line.rstrip().split('|')[1]
+				if name in drop or str(i) in drop:
+					keeping = False
+				else:
+					keeping = name in keep
+				i += 1
 
 			if keeping:
 				out.write(line)
@@ -125,9 +140,11 @@ def treeClusters(treefile, matrixfile, verbosity=True):
 
 	# matrix conatins also the dropped elements, even though probably/not yet not needed
 	pws = pd.read_csv(matrixfile, sep='\t', header=1, index_col=0, na_values='-')
-	# Drop upper half of (symmetric!) matrix to get rid of duplicates
-	pws.values[np.triu_indices_from(pws)] = np.nan
 
+	## !discarded (would be needed if no data is written on nodes & instead always pulled from matrix)
+	# Drop upper half of (symmetric!) matrix to get rid of duplicates
+	# pws.values[np.triu_indices_from(pws)] = np.nan
+	##
 
 	for node in t.traverse('postorder'):
 		# Only leaves are named!
@@ -140,13 +157,12 @@ def treeClusters(treefile, matrixfile, verbosity=True):
 			# This should be changed at some point
 			node.name = node.name.split('|')[1]
 
+			node.add_features(cl=None)
 			node.add_features(distances = pws[node.name])
 
-
-
 		else:
-			# differentiate between children that are leaves (get mean of values for all other current leaves from pw similarity matrix)
-			# and children that are not (already have values)
+			# differentiate between children that are leaves (get mean of values for all leaves under current node from pws-matrix-slice stored on leaf)
+			# and children that are not (they have [recursive mean of children] similarity values )
 			leaves = node.get_leaf_names()
 
 			values = []
@@ -161,20 +177,65 @@ def treeClusters(treefile, matrixfile, verbosity=True):
 
 			node.sim = meanfunc2(values)
 
+	# Cluster nodes based on similarity threshhold
+	# From bottom up (meaning a cluster will contain all leafes under the point where it was created)
+	# If a node has sim lower than th, put each child-branch in a separate cluster
+	clusters = []
+	threshhold = 0.5 #test-value, has to be a vaibale obsvly
+	for node in t.traverse('postorder'):
+		if node.is_leaf():
+			continue
+
+		if node.sim < threshhold or node.is_root():
+			for x in node.iter_descendants():
+				if any(l.cl for l in x.iter_leaves()):
+					continue
+
+				# add a list with all node instances to clusters
+				# Alternative (currenlty needed in msa_viewer), add: 'promoter|' + node.name to said lists
+				clusters.append(x.get_leaves())
+				#can be deleted since, merging overwrites this anyway
+				for leaf in clusters[-1]:
+					leaf.cl = len(clusters)-1
+
+	# go through clusters, >=2 neighbors have len <= 2, fuse them
+	cleanclusters = []
+	current = []
+	merged = []
+	for cluster in clusters:
+		if len(cluster) <= 2:
+			current += cluster
+		else:
+			if current:
+				merged.append(len(cleanclusters)) #-> index of new (ex-)small (merged) cluster
+				cleanclusters.append(current)
+				current = []
+			cleanclusters.append(cluster)
+
+	# either write feature on node to indicate 'merged' or write this to a file
+	for i, cluster in enumerate(cleanclusters):
+		for leaf in cluster:
+			leaf.cl = i
+
+
+
+
+
 	#simple visualisation for tests
 	def layout(node):
-		faces.add_face_to_node(AttrFace("sim"), node, column=0)
-
+		if node.is_leaf():
+			faces.add_face_to_node(AttrFace("cl"), node, column=0)
+		else:
+			faces.add_face_to_node(AttrFace("sim"), node, column=0)
 	ts = TreeStyle()
 	ts.layout_fn = layout
-
 	t.show(tree_style=ts)
+	# test vis end
 
 
 
 
-
-
+# flags are very very much in test state
 if __name__ == '__main__':
 	import argparse
 
@@ -183,14 +244,16 @@ if __name__ == '__main__':
 	parser.add_argument('fasta', help='Filename of a fasta to sort through')
 
 	parser.add_argument('-v', '--verbose', action='store_true', help='Be verbose.')
+	parser.add_argument('-d', '--drop', nargs='+', help='Never keep these (accIDs or index_from_0)')
 
-	group = parser.add_mutually_exclusive_group(required=True)
-	#group.add_argument('-n', '--numbers', nargs='+', type=int, help='Index numbers of entries to drop (first index = 1). Only saves non-dropped files.')
-	group.add_argument('-a', '--auto', action='store_true', help='Automatic calculation of entries to drop by calculating pw distance matrix. Saves dropped files aswell.')
-	group.add_argument('-c', '--tree_matrix', nargs=2, help='tree file & matrix file')
+
+	parser.add_argument('-a', '--auto', action='store_true', help='Automatic calculation of entries to drop by calculating pw distance matrix. Saves dropped files aswell.')
+
+	#parser.add_argument('-c', '--tree_matrix', nargs=2, help='tree file & matrix file')
 
 	args = parser.parse_args()
 	if args.auto:
-		autosort(args.fasta, args.verbose)
-	else:
-		treeClusters(*args.tree_matrix)
+		autosort(args.fasta, args.drop, args.verbose)
+		treeClusters('Promoters/clk_megacc.nwk', 'Promoters/clk_promoters_aligned_matrix.tsv')
+	#else:
+		#treeClusters(*args.tree_matrix)

@@ -3,7 +3,9 @@ import sys
 from PIL import Image
 from argparse import ArgumentParser
 from ete3 import Tree
-
+import pandas as pd
+import numpy as np
+from scipy.stats.mstats import gmean
 
 def getCategory(line):
 	if line.startswith('GPT'):
@@ -155,6 +157,103 @@ if orderFile:
 			category[line] = getCategory(line)
 	#?? orderDone = True ??
 
+# if '.fa' in alignmentFile:
+# 	mname = alignmentFile.split('.fa')[0] + '_matrix.tsv'
+# else:
+# 	mname = alignmentFile.split('.')[0] + '_matrix.tsv'
+mname = 'clk_promoters_aligned_matrix.tsv'
+
+def treeClusters(t, threshold, clustercolors, matrixfile=mname):
+
+	#These should be specified by a config file or flag or whatever
+	meanfunc1 = gmean
+	meanfunc2 = gmean
+
+	#t = Tree(newickFile)
+
+	# matrix conatins also the dropped elements, even though probably/not yet not needed
+	pws = pd.read_csv(matrixfile, sep='\t', header=1, index_col=0, na_values='-')
+
+	## !discarded (would be needed if no data is written on nodes & instead always pulled from matrix)
+	# Drop upper half of (symmetric!) matrix to get rid of duplicates
+	# pws.values[np.triu_indices_from(pws)] = np.nan
+	##
+
+	for node in t.traverse('postorder'):
+		# Only leaves are named!
+
+		# maybe needs to be 1 (to allow single sequences to become a cluster
+		node.add_features(sim=None)
+
+		if node.is_leaf():
+			# names in tree are 'promoter|acc'
+			# names in matix are only acc
+			# This should be changed at some poin
+			#node.name = node.name.split('|')[1]
+
+			node.add_features(cl=None)
+
+			node.add_features(distances = pws[node.name.split('|')[1]])
+
+		else:
+			# differentiate between children that are leaves (get mean of values for all other current leaves from pw similarity matrix)
+			# and children that are not (already have values)
+			leaves = node.get_leaf_names()
+
+			values = []
+
+			for n in node.children:
+				if n.name in leaves:
+					meansim = meanfunc1(n.distances[[n.split('|')[1] for n in leaves]].dropna())
+					#print(n.distances[leaves].dropna())
+					if not np.isnan(meansim):
+						values.append(meansim)
+				else:
+					values.append(n.sim)
+
+			#print(values)
+			node.sim = meanfunc2(values)
+
+	# Cluster nodes based on min/max similarity threshhold
+	cl = []
+	for node in t.traverse('postorder'):
+		if node.is_leaf():
+			continue
+
+		if node.sim < threshold or node.is_root():
+			for x in node.iter_descendants():
+				if any(l.cl for l in x.iter_leaves()):
+					continue
+
+				# 'promoter|' + node.name
+				cl.append(x.get_leaf_names())
+				for leaf in x.get_leaves():
+					leaf.cl = len(cl)-1
+
+	cleanclusters = []
+	current = []
+	for cluster in cl:
+		if len(cluster) <= 2:
+			current += cluster
+		else:
+			if current:
+				cleanclusters.append(current)
+				current = []
+			cleanclusters.append(cluster)
+
+	global clusterlist
+	clusterlist = cleanclusters
+
+
+	clusters = {}
+	for i, c in enumerate(cleanclusters):
+		clusterNo = i % len(clustercolors)
+		for name in c:
+			clusters[name] = clustercolors[clusterNo]
+
+	return clusters
+
+
 
 def getClusters(t, threshold, clustercolors):
 	clusters = {}
@@ -228,7 +327,8 @@ if newickFile:
 	mytree = Tree(newickFile)
 
 	if threshold:
-		clusters = getClusters(mytree, threshold, clustercolors)
+		#clusters = getClusters(mytree, threshold, clustercolors)
+		clusters = treeClusters(mytree, threshold, clustercolors)
 	else:
 		clusters = getFixedClusters(mytree, seeds, clustercolors)
 
