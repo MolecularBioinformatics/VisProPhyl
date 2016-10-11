@@ -6,22 +6,26 @@ import pandas as pd
 import numpy as np
 from scipy.stats.mstats import gmean
 from time import strftime
+from subprocess import call
+from Bio import Entrez, SeqIO, motifs
 
-# For now only a few functions
-# However, this script is intended to become a complete workflow (like phylogenetics)
-# This will (at the least) require implementation of GetPromoterSeqs & automated calls of clustalo and megacc
-# Either integrate msa-viewer functions or import them (or make the scripts work well after each other)
+VERBOSITY = True
+Entrez.email = 'nicolai.von-kuegelgen@student.uni-tuebingen.de'
+Entrez.tool = 'PromoterAnalysis-NvK'
+
+# ToDo Either integrate msa-viewer functions or import them (or make the scripts work well after each other)
 
 # ToDo: make & read config file
 #	- makes all flags (extra)optional OR overwrites all flags OR only used with flag
 #	- all proteins that should be used
-# 	- make & use appropiated subfolders
+# 	- make & use appropiated subfolders (set -p)
+#	- accs to drop for each protein
 #	- functions (& threshhold) used in treeClusters
 #	- numbers & normalisation used in _similarity
 #	- genome quality level (getPromoterSeq & treefile for later)
+#	- evalue cutoff & lenght for getPromoterSeq
 
-# TODO: change all scripts (really all of them) to always use acc^tax (or another consequent format) [instead of saving the tax information in the annotation files]
-# This also/especially includes the used fasta-headers in GetPromoterSeq
+#DONE: changed all scripts to always use acc^tax. ALL steps need to be rerun for this to take effect!
 
 def _myGetBasename(name):
 	'''
@@ -32,6 +36,322 @@ def _myGetBasename(name):
 	'''
 
 	return os.path.splitext(os.path.basename(name))[0]
+
+
+# opt: also use this class to provide/make a basse tree for the given g-quality
+class taxids:
+	def __init__(self, qlevel=1):
+		"""Provide an instance with all taxids of genomes in refseq for a given quality level, their accession numbers and ftp-download locations.
+		Neccessary files will be downloaded/generated automatically.
+		qlevel 0: all gemones, qlevel 1: assembly of at least one chromosome, qlevel2: representative/reference genome
+		"""
+		self.ids = set()
+		self.map = dict()
+		#not really needed, but maybe someday
+		self.qlevel = qlevel
+
+		if not os.path.isfile(os.path.join(PATH, 'refseq_taxids_l{}.txt'.format(qlevel))):
+			self.generatefiles(qlevel)
+
+		with open(os.path.join(PATH, 'refseq_taxids_l{}.txt'.format(qlevel)), 'r') as f:
+			next(f)
+			for line in f:
+				tax, acc, ftp = line.rstrip().split('\t')
+				self.ids.add(tax)
+				self.map[tax] = (acc, ftp)
+
+
+	def generatefiles(self, qlevel):
+		"""Creates necessary files for the class to work."""
+
+		if VERBOSITY:
+			print("Initialising refseq_genome taxid files.")
+
+		if not os.path.isfile(os.path.join(PATH, 'assembly_summary_refseq.txt')):
+			call('rsync --copy-links -q --times rsync://ftp.ncbi.nlm.nih.gov/genomes/ASSEMBLY_REPORTS/assembly_summary_refseq.txt .')
+
+		with open(os.path.join(PATH, 'assembly_summary_refseq.txt', 'r')) as f, open(os.path.join(PATH, 'refseq_taxids_l{}.txt'.format(qlevel), 'w')) as out:
+			next(f)
+			next(f)
+			out.write('#Taxid\tGenome-Accseion\tftp-folder-location\n')
+			for line in f:
+				lline = line.rstrip().split('\t')
+
+				if qlevel == 2 and lline[4] == 'na':  # refseq categeory unspecified (= not a representative/reference genome)
+					continue
+				if qlevel and lline[11] in ('Scaffold', 'Contig'):  # completeness of genome at least on one chromosome
+					continue
+
+				out.write("\t".join((lline[5], lline[0], lline[19])) + '\n')  # taxid, acc, ftp-link
+
+
+#  If this script is to be used without the phylogenetics.py workflow (up to step 2) then this function will have to be
+#  substituted with/adapted to a parser for a list of protein Accession-IDs and probably also the TaxFinder module/class
+def _getUniqueAccs(protein, taxid, cutoff=50):
+	"""Read combinedtables from Phylogenetics workflow.
+	 Extract Accesion numbers and taxids for hits, apply refseq as filter, save to file
+
+	 :param protein: a protein name from the phylogenetics workflow
+	 :param taxid: an instance of the taxids class
+	 :param cutoff: worst evalue (e^-{cutoff} accepted for hits
+	 :creates: {prortein}_hits.txt
+	 """
+
+	# search for phylogenetics workflow
+	if os.path.isfile("combinedtables/{}.tsv".format(protein)):
+		p = "combinedtables/{}.tsv".format(protein)
+	elif os.path.isfile(os.path.join(PATH, "combinedtables/{}.tsv".format(protein))):
+		p = os.path.join(PATH, "combinedtables/{}.tsv".format(protein))
+	else:
+		print('Could not locate blast results from phylogenetics workflow.')
+		i = input('Enter path to file(s):')
+		if os.path.isfile(os.path.join(os.path.dirname(i), "{}.tsv".format(protein))):
+			p = os.path.join(os.path.dirname(i), "{}.tsv".format(protein))
+		elif os.path.isfile(os.path.join(os.path.dirname(i), "combinedtables/{}.tsv".format(protein))):
+			p = os.path.join(os.path.dirname(i), "combinedtables/{}.tsv".format(protein))
+		else:
+			print('Path to phylogenetics workflow seems incorrect.\nExiting script.')
+			sys.exit()
+
+	if VERBOSITY:
+		print('Getting usable blast hits for {:<10}'.format(protein), end='\r')
+
+	with open(p, "r") as f:
+		next(f)
+		accs = set()
+		mapping = dict()
+		for line in f:
+			lline = line.split('\t')
+			tax = lline[0]
+			acc = lline[1]
+			evalue = lline[4]
+
+			#Only work with hits, that have a (good) genome in the refseq db
+			if tax not in taxid.ids:
+				continue
+
+			#Only accept refseq protein hits, since others will not be found in the refseq genomes anyway (probably? not 100% tested)
+			if acc[2] != '_':
+				continue
+
+			#reduce hits by evalue
+			if evalue == '0.0':
+				evalue = 201
+			elif 'e-' in evalue:
+				evalue = int(evalue.split('e-')[1])
+			else:
+				evalue = 0
+
+			if evalue < cutoff:
+				continue
+
+			accs.add(acc)
+			mapping[acc] = tax
+
+	with open(os.path.join(PATH, '{}_hits.tsv'.format(protein)), 'w') as out:
+		for acc in accs:
+			out.write(acc+'\t'+mapping[acc]+'\n')
+
+
+def _loadGenomeFeatures(protein, taxid):
+	"""Download genome annotation tables for all hits of given protein from NCBI ftp-server
+
+	:uses: Promoters/{protein}_hits.tsv
+	:param protein: a protein name from the phylogenetics workflow
+	:param taxid: an instance of the taxids class
+	:creates: featuretables/*.txt
+	"""
+
+	if VERBOSITY:
+		print('Downloading Genome annotation tables for hits of {:<10}'.format(protein), end='\r')
+
+	accs = set()
+	os.makedirs(os.path.join(PATH, 'featuretables'), exist_ok=True)
+
+	with open(os.path.join(PATH, '{}_hits.tsv').format(protein), 'r') as f:
+		for line in f:
+			acc, tax = line.rstrip().split('\t')
+			accs.add((acc, tax))
+
+	# check if -q really stops the message/textoutput from NCBI
+	cmd = 'rsync --copy-links -q --times rsync{}_feature_table.txt.gz featuretables/'
+
+	for acc, tax in accs:
+		if os.path.isfile(os.path.join(PATH, 'featuretables/{}_feature_table.txt'.format(tax))):
+			continue
+
+		if VERBOSITY:
+			print('Downloading Genome annotation table for species: {:<10}'.format(protein), end='\r')
+
+		ftp = taxid.map[tax][1]
+		fn = ftp.split('/')[-1]
+
+		ret = call(cmd.format(ftp[3:]+'/'+fn).split()) #downlaod from ncbi
+		p = os.path.join(PATH, 'featuretables/{}_feature_table.txt.gz'.format(fn))
+		ret += call('gzip -d {}'.format(p).split()) #unpack
+		p = os.path.join(PATH, 'featuretables/{}_feature_table.txt'.format(fn))
+		p2 = os.path.join(PATH, 'featuretables/{}_feature_table.txt'.format(tax))
+		ret += call('mv {} {}'.format(p, p2).split()) # rename
+		if ret:
+			print(ret) #should print errors
+
+
+# Searching through genome annotation files may be faster with reg-ex (probably only when applying regex to whole file)
+def _extractPromoterPos(protein):
+	"""Extract start & strand of Promoter for all (usable) hits a of protein
+	For each write Prot-Acc, TaxID, Genome-Acc, StartPos, Strand, GeneSym, Prot-Name into File
+
+	:uses: hits_{protein}.tsv, featuretables/*.txt
+	:param protein: a protein name from the phylogenetics workflow
+	:creates: {protein}_hitfeatures.tsv
+	"""
+
+	#sort hits by species, so feature tables have to be accessed only once per species
+	tax_accs = dict()
+	with open(os.path.join(PATH, '{}_hits.tsv'.format(protein)), 'r') as f:
+		for line in f:
+			acc, tax = line.rstrip().split('\t')
+			if tax in tax_accs:
+				tax_accs[tax] += [acc]
+			else:
+				tax_accs[tax] = [acc]
+
+	with open(os.path.join(PATH, '{}_hitfeatures.tsv'.format(protein)), 'w') as out:
+		out.write('#Prot-Acc\tTaxID\tGenome-Acc\tStartPos\tEndPos\tStrand\tGeneSym\tProt-Name\n')
+		for tax, accs in tax_accs.items():
+			if VERBOSITY:
+				print('Extracting promoter sequences for hits of {}, species: {:<10}'.format(protein, tax), end='\r')
+
+			with open(os.path.join(PATH, 'featuretables/{}_feature_table.txt'.format(tax)), 'r') as f:
+				for line in f:
+					#safe some time / only look for genes
+					if not line.startswith('CDS'):
+						continue
+
+					#without splitting first might also find 'related_accession', maybe not though after sorting for CDS
+					lline = line.rstrip().split('\t')
+	#Columns in *_feature_table.txt
+	#feature0	class1	assembly2	assembly_unit3	seq_type4	chromosome5	genomic_accession6	start7	end8	strand9
+	#product_accession10	non-redundant_refseq11	related_accession12	name13	symbol14	GeneID15	locus_tag16
+					if lline[10] not in accs:
+						continue
+
+					accs.remove(lline[10])
+
+					outl = [lline[10], tax, lline[6], lline[7], lline[8], lline[9], lline[14], lline[13]]
+					out.write('\t'.join(outl)+'\n')
+
+					if len(accs) ==0:
+						break
+				else:
+					#only with verbosity ?
+					print('Extracting promoter sequences for hits of {}, species: {}, features not found: {}'.format(protein, tax, accs))
+
+
+def _loadPromoterSeq(protein, length=1500):
+	"""Using the information of {protein}_hitfeatures.tsv download the associated promoter sequence from NCBI
+
+	:uses: {protein}_hitfeatures.tsv
+	:param protein: a protein name from the phylogenetics workflow
+	:param length: The number of NT in front of CDS start to pull
+	:creates: PromoterSeqs_{Protein}/*.fasta
+	"""
+
+	entries = set()
+	os.makedirs(os.path.join(PATH, 'PromoterSeqs_{}'.format(protein)), exist_ok=True)
+
+	with open(os.path.join(PATH, '{}_hitfeatures.tsv'.format(protein)), 'r') as f, open(os.path.join(PATH, 'PromoterSeqs_{}/annotation.tsv'.format(protein)), 'w') as annotation:
+		next(f)
+		annotation.write('#Protein-Acc\tTaxID\tGenomic-Acc\tStart-Pos\tEnd-Pos\tstrand\tGene symbol\tGene name\n')
+		for i, line in enumerate(f):
+			lline = line.rstrip().split('\t')
+			#lline: protein, taxid, genomicacc, start, end, strand, symbol, name
+
+			tax, genome_acc, start, end, strand = lline[1:6]
+
+			#Multiple proteins may come from one (unique) genomic locus
+			entry = (tax, genome_acc, start, end)
+			if entry in entries:
+				continue
+			else:
+				entries.add(entry)
+
+			#Dont load same sequence again - mostly for test use
+			#if os.path.isfile('PromoterSeqs_{}/{}.fasta'.format(protein, lline[6]+'_'+tax)): # / lline[0]
+				#continue
+			if VERBOSITY:
+				print('Downloading promoter sequences for hits of {}. Found: {} ({} multiple){:<6}'.format(protein, len(entries), i-len(entries), ''), end='\r')
+
+			#start from the *_hitfeatures file is the CDS start, we want region downstream of that
+			if strand == '+':
+				end = int(start)
+				start = int(start) - length
+				strand = 1
+			#If the gene is on the reverse strand, the Promoter is upstream of the gene
+			else:
+				start = int(end)
+				end = int(end) + length
+				strand = 2
+
+
+			handle = Entrez.efetch(db="nucleotide",
+								   id=genome_acc,
+								   rettype="fasta",
+								   strand=strand,
+								   seq_start=start,
+								   seq_stop=end)
+			record = SeqIO.read(handle, "fasta")
+
+			#Only short header in fasta file
+			record.id = '{}^{}'.format(lline[0], tax)
+			record.description = ''
+
+			with open(os.path.join(PATH, 'PromoterSeqs_{}/{}.fasta'.format(protein, lline[0])), 'w') as out:
+				SeqIO.write(record, out, 'fasta')
+
+			#Complete Information in annotation file
+			annotation.write('\t'.join(lline)+'\n')
+
+
+def getPromoterSeqs(protein, evalue, length, genomequality):
+	'''wrapper for all functions needed to download Promoter Seqs
+
+	:param protein: protein name from phylogenetics workflow
+	:param evalue: maximum evalue for collection of hits from workflow
+	:param length: number of bases before CDS start to pull as promoter sequence
+	:creates: {prortein}_hits.txt, featuretables/*.txt, {protein}_hitfeatures.tsv, PromoterSeqs_{Protein}/*.fasta
+	'''
+
+	# determine/flag if protein is from phylogenetics workflow or somewhere else
+
+	taxid = taxids(genomequality)
+	#if phylogenetics
+	_getUniqueAccs(protein, taxid, evalue)
+	#else: new parser for tsv or similar
+	_loadGenomeFeatures(protein, taxid)
+	_extractPromoterPos(protein)
+	_loadPromoterSeq(protein, length)
+
+
+def runClustal(protein):
+	'''
+	Wrapper to call run clustalo over all downloaded fasta files
+
+	:uses: PromoterSeqs_{proteins}/*.fasta
+	:param protein: protein name from phylogenetics workflow
+	:creates: {protein}_promoters_aligned.fasta
+	'''
+
+	v = ''
+	if VERBOSITY:
+		v = '-v '
+
+	pin = os.path.join(PATH, 'PromoterSeqs_{}/*.fasta'.format(protein))
+	pout = os.path.join(PATH, '{}_promoters_aligned.fasta'.format(protein))
+
+	cmd = 'cat {0} | clustalo -i - {2}-o {1} --force'.format(pin, pout, v)
+
+	call(cmd)
 
 
 def _pw_similarity(seqs, names):
@@ -97,40 +417,47 @@ def _similarity(seq1, seq2):
 		return np.NaN
 
 
-def autosort(basename, drop, verbosity=True):
+def autosort(protein, drop):
 	'''
-	Take a fasta file with multiple aligned sequences & remove entries that have no similarity score with other entries (greedy alg.)
+	Takes a fasta file with multiple aligned sequences, calculates pw-similarity matrix & removes entries that have no similarity score with other entries (greedy alg.)
 
-	:param basename: basename for .fasta file with aligned sequences
+	:uses: {protein}_promoters_aligned.fasta
+	:param protein: protein name from phylogenetics workflow
 	:param drop: list (or similar) of entries that are to be dropped regardless of score
-	:param verbosity: Bool
-	:create: (pw-similarity) _matrix.tsv, _kept.fasta, _dropped.fasta
+	:creates: {protein}_promoters_matrix.tsv, {protein}_promoters_kept.fasta, {protein}_promoters_dropped.fasta
 	'''
 	seqs = []
 	names = []
-	fname = basename + '.fasta'
+	fname = os.path.join(PATH, protein + '_promoters_aligned.fasta')
 
+
+	# this may be faster/easier with using SeqIO as parser
 	with open(fname, 'r') as f:
 		current = ''
 		for line in f:
 			line = line.rstrip()
 			if line.startswith('>'):
+				#first entry is empty
 				if current:
 					seqs.append(current)
-				names.append(line.split('|')[1])
+				# #OLD/current fastas: >promoter|{acc}
+				# names.append(line.split('|')[1])
+				# NEW: >{acc}^{tax}
+				names.append(line[1:])
 				current = ''
 				continue
 
 			if line:
 				current += line
+		#last seqence
 		seqs.append(current)
 
-	if verbosity:
-		print('Calculating pairwise similarity matrix for {}.'.format(fname))
+	if VERBOSITY:
+		print('Calculating pairwise similarity matrix for {:<10}.'.format(protein))
 
 	matrix = _pw_similarity(seqs, names)
 
-	with open(basename + '_matrix.tsv', 'w') as out:
+	with open(os.path.join(PATH, protein+'_promoters_matrix.tsv'), 'w') as out:
 		out.write('# Pairwise similarity scores for all sequences\n')
 		matrix.to_csv(path_or_buf=out, sep='\t', na_rep='N/A')
 
@@ -144,7 +471,7 @@ def autosort(basename, drop, verbosity=True):
 		matrix.drop(worst, axis=1, inplace=True)
 		dropped += list(worst)
 
-	if verbosity:
+	if VERBOSITY:
 		print('Following IDs were dropped to remove N/A from the similarity matrix:')
 		print(', '.join(dropped))
 
@@ -152,11 +479,15 @@ def autosort(basename, drop, verbosity=True):
 
 	i = 0
 
-	with open(fname, 'r') as f, open(basename+'_kept.fasta', 'w') as out, open(basename+'_dropped.fasta', 'w') as out2:
+	with open(fname, 'r') as f, open(os.path.join(PATH, protein+'_promoters_kept.fasta'), 'w') as out, open(os.path.join(PATH, protein+'_promoters_dropped.fasta'), 'w') as out2:
 		for line in f:
 			if line.startswith('>'):
-				name = line.rstrip().split('|')[1]
-				if name in drop or str(i) in drop:
+				# # OLD/current fastas: >promoter|{acc}
+				# name = line.rstrip().split('|')[1]
+
+				# NEW: >{acc}^{tax}
+				name = line[1:].rstrip()
+				if name in drop or name.split('^')[0] in drop or str(i) in drop:
 					keeping = False
 				else:
 					keeping = name in keep
@@ -168,30 +499,47 @@ def autosort(basename, drop, verbosity=True):
 				out2.write(line)
 
 
+def runMegacc(protein):
+	'''
+	Wrapper to call run Megacc over sorted MSA
+
+	:uses: {protein}_promoters_kept.fasta
+	:param protein: protein name from phylogenetics workflow
+	:creates: {protein}_promoters_megacc.nwk
+	'''
+
+	if not os.path.isfile(os.path.join(PATH, 'infer_NJ_nucleotide_pair.mao')):
+		print('MegaCC config file is missing, please rerun initialisation.\nExiting script.')
+		sys.exit()
+
+	v = '-s '
+	if VERBOSITY:
+		v = ''
+
+	pin = os.path.join(PATH, '{}_promoters_kept.fasta'.format(protein))
+	pout = os.path.join(PATH, '{}_promoters_megacc.txt'.format(protein))
+	cmd = 'megacc {}- a infer_NJ_nucleotide_pair.mao - d {} - o {}'.format(v, pin, pout)
+	call(cmd)
+
+
 # optional/possible: return Tree object (for msa viewer ?)
 
 #(opt.?) ToDo: addition of removed files as extra cluster group (+ [recursive?] grouping of dropped files)
 
 #opt. Todo: reclustering of merged groups by 'original' method (see/c&p msa_viewer)
-def treeClusters(basename, threshold=None, verbosity=True):
+def treeClusters(protein, threshold):
 	'''
 	Use pw-similarity to divide a clustered MSA in different groups
 
-	:param treefile: Newick tree with clustered MSA
-	:param matrixfile: filename, pw similarity matrix (.tsv)
+	:uses: {protein}_promoter_matrix.tsv, {protein}_promoters_megacc.nwk
+	:param protein: protein name from phylogenetics workflow
 	:param threshold: similarity threshhold for generation of groups
-	:param verbosity: bool
-	:creates: csv-file with clusters
+	:creates: {protein}_promoters_groups.csv
 	'''
 
 	# update treefile name once a wrapper function for megacc is there to be more uniform
-	treefile = basename.split('_')[0] + '_megacc.nwk'
-	matrixfile = basename + '_matirx.tsv'
-
-
-	if threshold is None:
-		#read from config
-		threshold = 0.5
+	treefile = os.path.join(PATH, protein + '_megacc.nwk')
+	matrixfile = os.path.join(PATH, protein + '_promoters_matirx.tsv')
 
 	#These should be specified by a config file or flag or whatever
 	meanfunc1 = gmean
@@ -200,6 +548,8 @@ def treeClusters(basename, threshold=None, verbosity=True):
 	t = Tree(treefile)
 
 	# matrix conatins also the dropped elements, even though probably/not yet needed
+	if VERBOSITY:
+		print()
 
 	pws = pd.read_csv(matrixfile, sep='\t', header=1, index_col=0, na_values='-')
 
@@ -208,10 +558,13 @@ def treeClusters(basename, threshold=None, verbosity=True):
 		node.add_features(sim=None)
 
 		if node.is_leaf():
+			## OLD / current workflow state
 			# names in tree are 'promoter|acc' (equal to fasta header)
 			# names in matix are only acc
-			# This should be changed at some point
 			node.name = node.name.split('|')[1]
+
+			## New workflow
+			# all names are acc^tax
 
 			node.add_features(cl=None)
 			node.add_features(distances = pws[node.name])
@@ -269,7 +622,7 @@ def treeClusters(basename, threshold=None, verbosity=True):
 			cleanclusters.append(cluster)
 
 
-	with open(basename+'_clustering.csv', 'w') as clout:
+	with open(os.path.join(PATH, protein+'_promoters_groups.csv'), 'w') as clout:
 		clout.write('# Clusters for {} determined with similarity threshhold {} on {}.\n'.format(os.path.basename(matrixfile), threshold, strftime('%x')))
 
 		for i, cluster in enumerate(cleanclusters):
@@ -279,7 +632,7 @@ def treeClusters(basename, threshold=None, verbosity=True):
 				note = ''
 
 			clout.write('!Cluster {}{}\n'.format(i, note))
-			clout.write(','.join(cluster))
+			clout.write(','.join([n.name for n in cluster]))
 
 			#For tests / returning Tree
 			for leaf in cluster:
@@ -304,13 +657,50 @@ def treeClusters(basename, threshold=None, verbosity=True):
 	# return t
 
 
-def motifAnalysis(basename, verbosity=True):
+def motifAnalysis(protein, skipclusters):
+	'''Generate motifs of each group within the MSA
 
-	fastafn = basename + '.fasta'
-	clusterfn = basename + '_clustering.csv'
+	:uses: {protein}_promoters_groups.csv, {protein}_promoters_aligend.fasta
+	:param protein: protein name from phylogenetics workflow
+	'''
 
-	# use SeqIO / Bio-something parser on (complete) msa fasta
-	# split into groups according to cluster file (dict with !names as keys)
+	fastafn = os.path.join(PATH, protein + '_promoters_aligned.fasta')
+	clusterfn = os.path.join(PATH, protein + '_promoters_groups.csv')
+
+	#dict like object fasta-headers as keys
+	seqs = SeqIO.index(fastafn, 'fasta')
+
+	groups = {}
+	with open(clusterfn, 'r') as f:
+		i = 0
+		name = ''
+		for line in f:
+			line = line.rstrip().split('#')[0]
+			if not line:
+				continue
+
+			i = i + 1
+			if i in skipclusters:
+				continue
+
+			# Allows definition of cluster names in file
+			if line.startswith('!'):
+				name = line[1:]
+				continue
+
+			cluster = line.split(',')
+			if name:
+				# OLD
+				groups[name] = [seqs['promoter|' + n] for n in cluster]
+				# # NEW
+				# groups[name] = [seqs[n] for n in cluster]
+				name = ''
+			else:
+				# OLD
+				groups['cluster{:02d}'.format(i)] = [seqs['promoter|' + n] for n in cluster]
+				# # NEW
+				# groups['cluster{:02d}'.format(i)] = [seqs[n] for n in cluster]
+
 
 	# use Bio.motifs on each group
 
@@ -318,26 +708,24 @@ def motifAnalysis(basename, verbosity=True):
 
 
 
+tasknames = ['acquire', 'clustal', 'autosort', 'megacc', 'grouping', 'motifs']
 
-
-tasknames = ['autosort', 'grouping', 'motifs']
-
-tasks = {
-	#	  'getPromSeq': ('get promoter seqs', wrapper_func, []),
-	#	  'runClustal': ('run MSA with clustalo', clustalfunc, []),
-		 'autosort': ('sort MSA for clustering', autosort, ['drop']),
-	#	  'runMegacc': ('run MSA clustering via megacc', megaccfunc, []),
+tasks = {'acquire': ('find and download promoter sequences', getPromoterSeqs, ['evalue', 'length', 'genomequality']),
+		 'clustal': ('run MSA with clustalo', runClustal, []),
+		 'autosort': ('similarity sort MSA for clustering', autosort, ['drop']),
+		 'megacc': ('run MSA clustering with Megacc', runMegacc, []),
 		 'grouping': ('find groups in clustered MSA', treeClusters, ['threshold']),
 		 'motifs': ('analyse MSA cluster groups for motifs', motifAnalysis, [])}
 
 
+#adapt to run for multiple protein names
 def runWorkflow(addargs, start, end=''):
 	'''
 	Starts the workflow from `start` until `end`. If `end` is empty, the workflow is run until the last element of the workflow.
 
 	:param addargs: args objects from argparser with flags for differents steps
-	:param start: The name of the first element to run.
-	:param end: The name of the last element to run or a falsy value if the workflow shall be run until the end.
+	:param start: The name/number of the first element to run.
+	:param end: The name/number of the last element to run or an empty string if the workflow shall be run until the end.
 	'''
 
 	if start not in tasknames:
@@ -354,7 +742,7 @@ def runWorkflow(addargs, start, end=''):
 	for taskname in tasknames[startidx:endidx]:
 		print('{}: "{}"'.format(taskname, tasks[taskname][0]))
 		task = tasks[taskname][1]
-		kwargs = {'basename': addargs.filename, 'verbosity': addargs.verbose}
+		kwargs = {'protein': addargs.protein}
 		kwargs.update({x: getattr(addargs, x) for x in tasks[taskname][2]})
 		task(**kwargs)
 
@@ -362,40 +750,60 @@ def runWorkflow(addargs, start, end=''):
 
 if __name__ == '__main__':
 	import argparse
+	import textwrap
+
+	workflow = '\n'.join(textwrap.wrap("""The following is a list of the workflow. The names or numbers can be used for the -s, -e or -o arguments.""",	width=80))
+
+	workflow += '\n\n' + '\n'.join(('{:>2}. {:<8} {}'.format(i, name, tasks[name][0]) for i, name in enumerate(tasknames)))
 
 	parser = argparse.ArgumentParser(description='Script for analysis of Promoters. Run for single protein (from Phylogenetics workflow) or use config file')
 
 	# add mutually exclusive group (required = True)
 	# filename & config into group
-	parser.add_argument('filename', help='base filename for all files')
+	# with inclusion of getPromoterseq, filename may need to be generated from Proteinname alone
+	parser.add_argument('protein', help='Proteiname from phylogenetics')
 
 	parser.add_argument('-v', '--verbose', action='store_true', help='Be verbose.')
-	# parser.add_argument('-l', '--list', action='store_true', help='Shows the whole workflow with information and exits')
+	parser.add_argument('-l', '--list', action='store_true', help='Shows the whole workflow with information and exits')
 	# parser.add_argument('-i', '--init', action='store_true', help='Initiates the working directory with necessary files and folders')
 	parser.add_argument('-s', '--startfrom', default=0, help='Run from and including this step') # [e.g. 7 or hist]
 	parser.add_argument('-e', '--end', default='', help='Stop after this step') # [e.g. 7 or hist]
 	parser.add_argument('-o', '--only', default='', help='Run only the given step, takes precedence over -s and -e') # [e.g. 4 or unique]
 
-	# only step 1 - autosort
+	parser.add_argument('-p', '--path', default='', help='Path Prefix which will be added to all generated files & folders')
+
+	# only step 0 - loading
+	parser.add_argument('--evalue', default=50, help='Lowest exponent allowed as evalue during hit-collection. Default: 50')
+	parser.add_argument('--length', default=1500,	help='Number of bases in front of CDS to be acquired as promoter sequence. Default: 1500')
+	parser.add_argument('-q', '--genomequality', default=1, type=int, help='Quality level for  refseq genomes. 0: all, 1: at one chromosome, 2: representative/reference')
+
+
+	# only step 2 - autosort
 	parser.add_argument('-d', '--drop', nargs='+', default=[], help='Remove these Accs (or index_from_0) during sorting')
 
-	#only step 2 - grouping
-	parser.add_argument('-t', '--threshold', type=float, default=None, help='Similarity threshold for grouping of clustered MSA')
+	#only step 4 - grouping
+	parser.add_argument('-t', '--threshold', type=float, default=0.5, help='Similarity threshold for grouping of clustered MSA. Default: 0.5')
 
 	args = parser.parse_args()
 
-	# if args.list:
-	# 	parser.print_help()
-	# 	print('')
-	# 	print(workflow)
-	# 	sys.exit()
+	if args.list:
+		parser.print_help()
+		print('')
+		print(workflow)
+		sys.exit()
 
 	# if args.init:
 	# 	init()
 	# 	sys.exit()
 
+
 	# check if init has been run
 
+	PATH = args.path
+	VERBOSITY = args.verbose
+
+	if PATH:
+		os.makedirs(PATH, exist_ok=True)
 
 	# if config: start parser
 
