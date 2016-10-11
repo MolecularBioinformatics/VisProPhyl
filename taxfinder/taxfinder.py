@@ -184,7 +184,7 @@ class TaxFinder():
 				t = self.taxdb[taxid]
 			except KeyError:
 				self.lineageCache[taxid] = tuple()
-				return tuple
+				return tuple()
 			if display == 'taxid':
 				s = taxid
 			elif display == 'name':
