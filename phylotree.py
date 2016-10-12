@@ -278,10 +278,32 @@ class TreeMaker(object):
 		if self.collapse:
 			toDelete = []
 			for n in self.t.traverse('postorder'):
+
+				# Node attributes that should lead to collapsing (= no information in node) [marked *]
+				#
+				# * len(n.children) == 1 -> reduce long singular lineages to one step, leaves dont have children
+				# 	- if not self.empty only children with n.total > 0 have to be considered: len([x for x in n.children if x.total])
+				#	- the root node can be 'deleted', therefore at that point complete collapsing fails right now
+				#
+				# * n.total == 0 [and n not in toPrune] -> empty nodes, (Pruning makes new leaves, keeping these) [^1]
+				#	- this obviously doesn't apply showing empty nodes
+				#	- I think in principle pruning commands should not affect collapsing (collapse should only make tree more
+				#     readable, but dont change information). If (default) empty nodes should disappear, what about nodes that
+				#     are empty & pruned ? Keep them just because they were mentioned ? (currently for leaves made by pruning ^1).
+				#     It would probably be more consequent to collapse emtpy nodes regardless of pruning.
+				#	  Maybe a '!dontcollapse' option for specific nodes could be introduced for the pruningfile
+
+
+				# not sure what exactly the originally included 'len(n.get_sisters())==0' was supposed to do, but it caused too much collapsing
+
 				if n.is_leaf():
 					if not self.empty and n.total == 0 and n not in toPrune:
 						toDelete.append(n)
-				elif len(n.get_sisters()) == 0 or len(n.children) == 1:
+				elif self.empty: # with and len(..) not sure if this could jump to the next elif if the part after and is False
+					if len(n.children) == 1:
+						toDelete.append(n)
+				#not self.empty
+				elif len([x for x in n.children if x.total]) == 1 or n.total == 0:
 					toDelete.append(n)
 
 			for n in toDelete:
