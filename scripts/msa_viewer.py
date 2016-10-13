@@ -163,6 +163,8 @@ if orderFile:
 # 	mname = alignmentFile.split('.')[0] + '_matrix.tsv'
 mname = 'clk_promoters_aligned_matrix.tsv'
 
+merged = []
+
 def treeClusters(t, threshold, clustercolors, matrixfile=mname):
 
 	#These should be specified by a config file or flag or whatever
@@ -174,15 +176,9 @@ def treeClusters(t, threshold, clustercolors, matrixfile=mname):
 	# matrix conatins also the dropped elements, even though probably/not yet not needed
 	pws = pd.read_csv(matrixfile, sep='\t', header=1, index_col=0, na_values='-')
 
-	## !discarded (would be needed if no data is written on nodes & instead always pulled from matrix)
-	# Drop upper half of (symmetric!) matrix to get rid of duplicates
-	# pws.values[np.triu_indices_from(pws)] = np.nan
-	##
-
 	for node in t.traverse('postorder'):
 		# Only leaves are named!
 
-		# maybe needs to be 1 (to allow single sequences to become a cluster
 		node.add_features(sim=None)
 
 		if node.is_leaf():
@@ -192,7 +188,6 @@ def treeClusters(t, threshold, clustercolors, matrixfile=mname):
 			#node.name = node.name.split('|')[1]
 
 			node.add_features(cl=None)
-
 			node.add_features(distances = pws[node.name.split('|')[1]])
 
 		else:
@@ -237,6 +232,7 @@ def treeClusters(t, threshold, clustercolors, matrixfile=mname):
 			current += cluster
 		else:
 			if current:
+				merged.append(len(cleanclusters))
 				cleanclusters.append(current)
 				current = []
 			cleanclusters.append(cluster)
@@ -404,7 +400,13 @@ def clusterout(anFN, outFN):
 	with open(outFN, 'w') as out:
 		out.write('# Names/Acc-IDs/... of MSA sequences sorted by clusters. Each lines containes comma separated entries for one cluster.\n')
 		out.write("# Order of clusters is defined by Newick file '{}', unless the -o (--order) option was given to msa_viewer this also corresponds to the top-down order of the result picture.\n".format(newickFile))
-		for cluster in clusterlist:
+		for i, cluster in enumerate(clusterlist):
+			if i in merged:
+				note = ' (remerged)'
+			else:
+				note = ''
+
+			out.write('!Cluster {}{}\n'.format(i, note))
 			out.write(','.join(list(map(lambda x: x.split('|')[1]+'^'+mapping[x.split('|')[1]], cluster)))+'\n')
 
 

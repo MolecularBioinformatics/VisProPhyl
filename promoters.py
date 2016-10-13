@@ -8,6 +8,7 @@ from scipy.stats.mstats import gmean
 from time import strftime
 from subprocess import call
 from Bio import Entrez, SeqIO, motifs
+from Bio.Alphabet import DNAAlphabet
 
 VERBOSITY = True
 Entrez.email = 'nicolai.von-kuegelgen@student.uni-tuebingen.de'
@@ -254,7 +255,7 @@ def _loadPromoterSeq(protein, length=1500):
 	:uses: {protein}_hitfeatures.tsv
 	:param protein: a protein name from the phylogenetics workflow
 	:param length: The number of NT in front of CDS start to pull
-	:creates: PromoterSeqs_{Protein}/*.fasta
+	:creates: PromoterSeqs_{Protein}/*.fasta, PromoterSeqs_{Protein}/annotation.tsv
 	"""
 
 	entries = set()
@@ -539,7 +540,14 @@ def treeClusters(protein, threshold):
 
 	# update treefile name once a wrapper function for megacc is there to be more uniform
 	treefile = os.path.join(PATH, protein + '_megacc.nwk')
-	matrixfile = os.path.join(PATH, protein + '_promoters_matirx.tsv')
+	matrixfile = os.path.join(PATH, protein + '_promoters_matrix.tsv')
+
+	if not os.path.isfile(treefile):
+		print('Newick-tree file not found. Run step 3 for this file to be created.')
+		sys.exit()
+	if not os.path.isfile(matrixfile):
+		print('pws matrix file not found. Run step 2 for this file to be created.')
+		sys.exit()
 
 	#These should be specified by a config file or flag or whatever
 	meanfunc1 = gmean
@@ -600,7 +608,6 @@ def treeClusters(protein, threshold):
 					continue
 
 				# add a list with all node instances to clusters
-				# Alternative (currenlty needed in msa_viewer), add: 'promoter|' + node.name to said lists
 				clusters.append(x.get_leaves())
 
 				#can be deleted since, merging overwrites this anyway, only needed for tests / direct passing of tree
@@ -612,6 +619,7 @@ def treeClusters(protein, threshold):
 	current = []
 	merged = []
 	for cluster in clusters:
+		# Number by variable ??
 		if len(cluster) <= 2:
 			current += cluster
 		else:
@@ -620,7 +628,6 @@ def treeClusters(protein, threshold):
 				cleanclusters.append(current)
 				current = []
 			cleanclusters.append(cluster)
-
 
 	with open(os.path.join(PATH, protein+'_promoters_groups.csv'), 'w') as clout:
 		clout.write('# Clusters for {} determined with similarity threshhold {} on {}.\n'.format(os.path.basename(matrixfile), threshold, strftime('%x')))
@@ -632,7 +639,7 @@ def treeClusters(protein, threshold):
 				note = ''
 
 			clout.write('!Cluster {}{}\n'.format(i, note))
-			clout.write(','.join([n.name for n in cluster]))
+			clout.write(','.join([n.name for n in cluster]) + '\n')
 
 			#For tests / returning Tree
 			for leaf in cluster:
@@ -642,16 +649,16 @@ def treeClusters(protein, threshold):
 				# else:
 				# 	leaf.add_features(remerged=False)
 
-	#simple visualisation for tests
-	def layout(node):
-		if node.is_leaf():
-			faces.add_face_to_node(AttrFace("cl"), node, column=0)
-		else:
-			faces.add_face_to_node(AttrFace("sim"), node, column=0)
-	ts = TreeStyle()
-	ts.layout_fn = layout
-	t.show(tree_style=ts)
-	# test vis end
+	# #simple visualisation for tests
+	# def layout(node):
+	# 	if node.is_leaf():
+	# 		faces.add_face_to_node(AttrFace("cl"), node, column=0)
+	# 	else:
+	# 		faces.add_face_to_node(AttrFace("sim"), node, column=0)
+	# ts = TreeStyle()
+	# ts.layout_fn = layout
+	# t.show(tree_style=ts)
+	# # test vis end
 
 	# for passing to next function (msa viewer) - maybe not needed
 	# return t
@@ -665,13 +672,22 @@ def motifAnalysis(protein, skipclusters):
 	'''
 
 	fastafn = os.path.join(PATH, protein + '_promoters_aligned.fasta')
-	clusterfn = os.path.join(PATH, protein + '_promoters_groups.csv')
+	groupfn = os.path.join(PATH, protein + '_promoters_groups.csv')
+
+	if not os.path.isfile(fastafn):
+		print('MSA fasta file not found. Run step 1 for this file to be created.')
+		sys.exit()
+	if not os.path.isfile(groupfn):
+		print('Grouping file not found. Run step 4 for this file to be created.')
+		sys.exit()
 
 	#dict like object fasta-headers as keys
-	seqs = SeqIO.index(fastafn, 'fasta')
+	seqs = SeqIO.index(fastafn, 'fasta', alphabet=DNAAlphabet())
+
+	skipnames = [i for i in skipclusters if i.isalpha()]
 
 	groups = {}
-	with open(clusterfn, 'r') as f:
+	with open(groupfn, 'r') as f:
 		i = 0
 		name = ''
 		for line in f:
@@ -680,7 +696,7 @@ def motifAnalysis(protein, skipclusters):
 				continue
 
 			i = i + 1
-			if i in skipclusters:
+			if str(i) in skipclusters:
 				continue
 
 			# Allows definition of cluster names in file
@@ -689,7 +705,18 @@ def motifAnalysis(protein, skipclusters):
 				continue
 
 			cluster = line.split(',')
-			if name:
+
+			if len(cluster) == 1:
+				if VERBOSITY:
+					print("Skipped {} because there's only one entry.".format(name or 'cluster{:02d}'.format(i)))
+				name = ''
+				continue
+
+
+			#allow to drop clusters based on partial name (like 'remerged')
+			if name and any((i in name for i in skipnames)):
+				continue
+			elif name:
 				# OLD
 				groups[name] = [seqs['promoter|' + n] for n in cluster]
 				# # NEW
@@ -701,8 +728,53 @@ def motifAnalysis(protein, skipclusters):
 				# # NEW
 				# groups['cluster{:02d}'.format(i)] = [seqs[n] for n in cluster]
 
+	motifdict = {}
 
-	# use Bio.motifs on each group
+	#function to get score for a window of n sequences (no gaps)
+	def groupsimilarity(seqs):
+		score = 0
+		for pos in zip(*seqs):
+			score += pos.count(pos[0]) == len(pos)
+		return score
+
+	for name, gr in groups.items():
+		# split group into sections with high similarity
+		motifpos = []
+
+		winlen = 50
+		scoremin = 45
+		#maximum number of bases between two overlapping clusters, to fuse them. This principally allows gaps in motifs
+		allowed_overlap = 3
+
+		start = None
+
+		for i in range(len(gr[0]) - winlen):
+			seqs = [str(rec.seq)[i:i+winlen] for rec in gr]
+			if '-' in ''.join(seqs):
+				if start is not None:
+					if motifpos and i - 1 + winlen - motifpos[-1][1] <= allowed_overlap:
+						motifpos[-1][1] = i - 1 + winlen
+					else:
+						motifpos.append([start, i - 1 + winlen])
+					start = None
+				continue
+
+			if start is None and groupsimilarity(seqs) >= scoremin:
+				start = i
+			elif start is not None and groupsimilarity(seqs) <= scoremin:
+				if motifpos and i - 1 + winlen - motifpos[-1][1] <= allowed_overlap:
+					motifpos[-1][1] = i - 1 + winlen
+				else:
+					motifpos.append([start, i - 1 + winlen])
+				start = None
+
+		print(name, len(gr), motifpos)
+
+
+		#modify name for split groups
+		# motifdict[name] = motifs.create(i.seq for i in gr)
+		# print(len(motifdict[name].counts), len(motifdict[name].consensus))
+
 
 	# generate sequence logo, consensus sequencce & save motive in Jaspar format
 
@@ -715,7 +787,7 @@ tasks = {'acquire': ('find and download promoter sequences', getPromoterSeqs, ['
 		 'autosort': ('similarity sort MSA for clustering', autosort, ['drop']),
 		 'megacc': ('run MSA clustering with Megacc', runMegacc, []),
 		 'grouping': ('find groups in clustered MSA', treeClusters, ['threshold']),
-		 'motifs': ('analyse MSA cluster groups for motifs', motifAnalysis, [])}
+		 'motifs': ('analyse MSA cluster groups for motifs', motifAnalysis, ['skipclusters'])}
 
 
 #adapt to run for multiple protein names
@@ -728,24 +800,36 @@ def runWorkflow(addargs, start, end=''):
 	:param end: The name/number of the last element to run or an empty string if the workflow shall be run until the end.
 	'''
 
-	if start not in tasknames:
+	if start.isdigit():
+		if int(start) >= len(tasknames):
+			raise ValueError('Only {} tasks exist, number {} is too high.'.format(len(tasknames), int(start)))
+		else:
+			startidx = int(start)
+	elif start not in tasknames:
 		raise ValueError('{} is no valid task.'.format(start))
+	else:
+		startidx = tasknames.index(start)
 
-	if end == '':
+	if end.isdigit():
+		if int(end) >= len(tasknames):
+			raise ValueError('Only {} tasks exist, number {} is too high.'.format(len(tasknames), int(end)))
+		else:
+			endidx = max(int(end), startidx+1)
+	elif end == '':
 		endidx = len(tasknames)
 	elif end not in tasknames:
 		raise ValueError('{} is no valid task.'.format(end))
 	else:
 		endidx = tasknames.index(end) + 1
 
-	startidx = tasknames.index(start)
+
 	for taskname in tasknames[startidx:endidx]:
-		print('{}: "{}"'.format(taskname, tasks[taskname][0]))
+		if VERBOSITY:
+			print('{}: "{}"'.format(taskname, tasks[taskname][0]))
 		task = tasks[taskname][1]
 		kwargs = {'protein': addargs.protein}
 		kwargs.update({x: getattr(addargs, x) for x in tasks[taskname][2]})
 		task(**kwargs)
-
 
 
 if __name__ == '__main__':
@@ -759,15 +843,14 @@ if __name__ == '__main__':
 	parser = argparse.ArgumentParser(description='Script for analysis of Promoters. Run for single protein (from Phylogenetics workflow) or use config file')
 
 	# add mutually exclusive group (required = True)
-	# filename & config into group
-	# with inclusion of getPromoterseq, filename may need to be generated from Proteinname alone
+	# protein & config & into group -i & -l aswell!
 	parser.add_argument('protein', help='Proteiname from phylogenetics')
 
 	parser.add_argument('-v', '--verbose', action='store_true', help='Be verbose.')
 	parser.add_argument('-l', '--list', action='store_true', help='Shows the whole workflow with information and exits')
 	# parser.add_argument('-i', '--init', action='store_true', help='Initiates the working directory with necessary files and folders')
 	parser.add_argument('-s', '--startfrom', default=0, help='Run from and including this step') # [e.g. 7 or hist]
-	parser.add_argument('-e', '--end', default='', help='Stop after this step') # [e.g. 7 or hist]
+	parser.add_argument('-e', '--end', default='', help='Stop after this step, ignored if smaller than start') # [e.g. 7 or hist]
 	parser.add_argument('-o', '--only', default='', help='Run only the given step, takes precedence over -s and -e') # [e.g. 4 or unique]
 
 	parser.add_argument('-p', '--path', default='', help='Path Prefix which will be added to all generated files & folders')
@@ -783,6 +866,10 @@ if __name__ == '__main__':
 
 	#only step 4 - grouping
 	parser.add_argument('-t', '--threshold', type=float, default=0.5, help='Similarity threshold for grouping of clustered MSA. Default: 0.5')
+
+	#only step 5 - motif analysis
+	parser.add_argument('-sk', '--skipclusters', nargs='+', default=[], help="Don't analyse these groups (ints with index_from_1 or parts of group names)")
+
 
 	args = parser.parse_args()
 
@@ -809,42 +896,7 @@ if __name__ == '__main__':
 
 
 	if args.only:
-		try:
-			a = int(args.only)
-		except ValueError:
-			if args.only in tasknames:
-				runWorkflow(args, args.only, args.only)
-			else:
-				parser.print_help()
-		else:
-			if a >= len(tasknames):
-				parser.print_help()
+		runWorkflow(args, args.only, args.only)
 	else:
-		try:
-			a = int(args.startfrom)
-		except ValueError:
-			if args.startfrom in tasknames:
-				pass
-			else:
-				parser.print_help()
-				sys.exit()
-		else:
-			if a >= len(tasknames):
-				parser.print_help()
-				sys.exit()
-		if args.end:
-			try:
-				a = int(args.end)
-			except ValueError:
-				if args.end in tasknames:
-					pass
-				else:
-					parser.print_help()
-					sys.exit()
-			else:
-				if a >= len(tasknames):
-					parser.print_help()
-					sys.exit()
-
 		runWorkflow(args, args.startfrom, args.end)
 
