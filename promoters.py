@@ -8,7 +8,7 @@ from scipy.stats.mstats import gmean
 from time import strftime
 from subprocess import call
 from Bio import Entrez, SeqIO, motifs
-from Bio.Alphabet import DNAAlphabet
+from Bio.Alphabet import DNAAlphabet, IUPAC
 
 VERBOSITY = True
 Entrez.email = 'nicolai.von-kuegelgen@student.uni-tuebingen.de'
@@ -708,7 +708,7 @@ def motifAnalysis(protein, skipclusters):
 
 			if len(cluster) == 1:
 				if VERBOSITY:
-					print("Skipped {} because there's only one entry.".format(name or 'cluster{:02d}'.format(i)))
+					print("Skipped '{}' because there's only one entry.".format(name or 'cluster{:02d}'.format(i)))
 				name = ''
 				continue
 
@@ -718,7 +718,7 @@ def motifAnalysis(protein, skipclusters):
 				continue
 			elif name:
 				# OLD
-				groups[name] = [seqs['promoter|' + n] for n in cluster]
+				groups[name.replace(' ', '').lower()] = [seqs['promoter|' + n] for n in cluster]
 				# # NEW
 				# groups[name] = [seqs[n] for n in cluster]
 				name = ''
@@ -741,8 +741,12 @@ def motifAnalysis(protein, skipclusters):
 		# split group into sections with high similarity
 		motifpos = []
 
+		# The algorithm still produces overlapping groups
+		# porbably needs to run without overlap-check first
+		# then check all positions & merge if the overlap by X bases [or overlap by x-percent]
+
 		winlen = 50
-		scoremin = 45
+		scoremin = 45 #meaning 100% conserved bases inside the window
 		#maximum number of bases between two overlapping clusters, to fuse them. This principally allows gaps in motifs
 		allowed_overlap = 3
 
@@ -768,15 +772,38 @@ def motifAnalysis(protein, skipclusters):
 					motifpos.append([start, i - 1 + winlen])
 				start = None
 
-		print(name, len(gr), motifpos)
+
+		#ToDo: the pos should be added to the motif instance, so it can be saved later on!
+		for i, pos in enumerate(motifpos):
+			motifdict[name+'-{:02d}'.format(i)] = motifs.create([str(rec.seq)[pos[0]:pos[1]] for rec in gr], alphabet=IUPAC.unambiguous_dna)
+			#print(name+'_{:02d}'.format(i), motifdict[name+'_{:02d}'.format(i)].consensus, pos)
+
+	#if logos should be saved in an extra subfolder
+	motiffolder = 'motifs'
+	if motiffolder:
+		# unless the window parameters are fixed 'exist_ok' should be probably be False
+		# otherwise files from a prevoius analysis could remain and mix into the new results
+		os.makedirs(os.path.join(PATH, motiffolder), exist_ok=True)
 
 
-		#modify name for split groups
-		# motifdict[name] = motifs.create(i.seq for i in gr)
-		# print(len(motifdict[name].counts), len(motifdict[name].consensus))
+	#Opt Todo: make a single file with all consensus sequences?!
+
+	for name, motif in motifdict.items():
+		#the heigth (bit value) in logos doesnt seem quite correct currently
+		motif.weblogo(os.path.join(PATH, motiffolder, '{}_{}_seqlogo.png'.format(protein, name)))
+
+	for name, gr in groups.items():
+		grmotifs = [v for k, v in motifdict.items() if name in k]
+
+		#dont make a file for groups where no conserved motif was created
+		if not len(grmotifs):
+			continue
+
+		with open(os.path.join(PATH, motiffolder, '{}_{}_motifs.jas'.format(protein, name)), 'w') as out:
+
+			out.write(motifs.write(grmotifs, 'jaspar'))
 
 
-	# generate sequence logo, consensus sequencce & save motive in Jaspar format
 
 
 
