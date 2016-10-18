@@ -1,0 +1,40 @@
+# Config File for promoters.py workflow
+# Usage of parameters in this file is enabled with the -c/--config flag
+# This file can be used to specify parameters for all flags (except all of the mutually exclusive) of the workflow for multiple proteins each
+# If a flag is not defined in the config file the script first falls back on the values specified in the console, then to the default values
+
+# The file must cobtain one block for each protein, all flags given before the blocks are set as default
+# Each Block has to start like this: '!Proteinname' and end like this '!!Proteinname'
+# All following lines can specify ONE falg each, like this: Flagname:Value
+# In case multiple values are needed separate them with spaces: Flagname:Value1 Value2
+# The values for the flags should be entered in the same format as the console. (exception: verbose has to be 'true'/'false')
+# Everything behind hashes and empty lines are ignored.
+
+# An Example is given below:
+
+# These values will be default for all proteins
+verbose:False
+startfrom:0
+length:1500
+evalue:50
+genomequality:1
+phylopath:home/nicolai/Desktop/CircadianPhylogeny
+
+# The workflow will be run for PROTEIN1 with the flags specified above and in the block
+!PROTEIN1
+path:protein1
+drop:1 2 3
+threshold:0.4
+skipclusters:5
+!!
+
+# The workflow will be run for PROTEIN2 with the flags specified above (unless overwritten in the block) and in the block
+!PROTEIN2
+startfrom:1
+end:4
+path:protein2
+drop:34
+threshold:0.6
+evalue: 30
+verbose: True
+!!
