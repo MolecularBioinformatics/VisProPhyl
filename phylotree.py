@@ -810,14 +810,14 @@ class Clusters(TreeMaker):
 				if not line:
 					continue
 
-				i = i + 1
 				if i in self.dontuse:
+					if not line.startswith('!'):
+						i += 1
 					continue
 
 				#Allows definition of cluster names in file
 				if line.startswith('!'):
 					self.featurenames['f_{:02d}'.format(i)] = line[1:]
-					i -= 1
 					continue
 
 				cluster = line.split(',')
@@ -834,6 +834,8 @@ class Clusters(TreeMaker):
 
 				self.featurelist.append('f_{:02d}'.format(i))
 				setattr(self, 'f_{:02d}'.format(i), [n.split('^')[0] for n in cluster])
+
+				i = i + 1
 
 		#use different range of colors depeding on number of features
 		if len(self.featurelist) <= 6:
@@ -1019,7 +1021,7 @@ if __name__ == '__main__':
 
 	# Options only for 'cluster'
 	parser_cl.add_argument('clusters', help='Filename of the .csv file that contains one cluster per line (comma separated TaxID/acc^TaxID).')
-	parser_cl.add_argument('-d', '--dropclusters', nargs='+', type=int, default=[], help='Indices of clusters that should not be included (First index = 1).')
+	parser_cl.add_argument('-d', '--dropclusters', nargs='+', type=int, default=[], help='Indices of clusters that should not be included (First index = 0).')
 
 	args = parser.parse_args()
 

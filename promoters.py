@@ -12,6 +12,10 @@ from Bio.Alphabet import DNAAlphabet, IUPAC
 from copy import deepcopy
 import re
 from glob import glob
+from PIL import Image
+from taxfinder import TaxFinder
+from phylogenetics import NodeSanitizer
+from phylotree import Clusters
 
 VERBOSITY = False
 Entrez.email = 'nicolai.von-kuegelgen@student.uni-tuebingen.de'
@@ -19,16 +23,9 @@ Entrez.tool = 'PromoterAnalysis-NvK'
 
 # ToDo Either integrate msa-viewer functions or import them (or make the scripts work well after each other)
 
-# ToDo: make & read config file
-#	- makes all flags (extra)optional OR overwrites all flags OR only used with flag
-#	- all proteins that should be used
-# 	- make & use appropiated subfolders (set -p)
-#	- accs to drop for each protein
+# ToDo: extras for config file
 #	- functions (& threshhold) used in treeClusters
 #	- numbers & normalisation used in _similarity
-#	- genome quality level (getPromoterSeq & treefile for later)
-#	- evalue cutoff & lenght for getPromoterSeq
-#	- location of phylogenetics/combined tables
 
 
 def _myGetBasename(name):
@@ -60,6 +57,10 @@ def init():
 	if not os.path.isfile('promotersConfig.txt'):
 		with open('promotersConfig.txt', 'w') as out, open(os.path.join(origDir, 'promotersConfig.txt'), 'r') as f:
 			out.write(f.read())
+
+		if not os.path.isfile('tree_tp_prune.txt'):
+			with open('tree_tp_prune.txt', 'w') as out, open(os.path.join(origDir, 'tree_tp_prune.txt'), 'r') as f:
+				out.write(f.read())
 
 
 # opt: also use this class to provide/make a base tree for the given g-quality
@@ -126,7 +127,6 @@ class taxids:
 				out.write("\t".join((lline[5], lline[0], lline[19])) + '\n')  # taxid, acc, ftp-link
 
 
-
 def readConfig(defaultargs):
 	'''
 	Read the config file and run the workflow accordingly.
@@ -159,7 +159,7 @@ def readConfig(defaultargs):
 	with open('promotersConfig.txt', 'r') as f:
 		try:
 			for line in f:
-				line = line.rstrip().split('#')[0]
+				line = line.split('#')[0].rstrip()
 
 				if not line:
 					continue
@@ -210,7 +210,10 @@ def readConfig(defaultargs):
 		if PATH:
 			os.makedirs(PATH, exist_ok=True)
 
-		runWorkflow(args, args.startfrom, args.end)
+		if args.only:
+			runWorkflow(args, args.only, args.only)
+		else:
+			runWorkflow(args, args.startfrom, args.end)
 
 
 
@@ -394,6 +397,7 @@ def _loadPromoterSeq(protein, length=1500):
 	"""
 
 	entries = set()
+	tax_cache = set()
 	os.makedirs(os.path.join(PATH, 'PromoterSeqs_{}'.format(protein)), exist_ok=True)
 
 	with open(os.path.join(PATH, '{}_hitfeatures.tsv'.format(protein)), 'r') as f, open(os.path.join(PATH, 'PromoterSeqs_{}/annotation.tsv'.format(protein)), 'w') as annotation:
@@ -439,7 +443,10 @@ def _loadPromoterSeq(protein, length=1500):
 			record = SeqIO.read(handle, "fasta")
 
 			#Only short header in fasta file
-			record.id = '{}^{}'.format(lline[0], tax)
+			if tax in tax_cache:
+				record.id = '{}^{}'.format(lline[0], tax)
+			else:
+				record.id = '{}^{}'.format(lline[0], tax)
 			record.description = ''
 
 			with open(os.path.join(PATH, 'PromoterSeqs_{}/{}.fasta'.format(protein, lline[0])), 'w') as out:
@@ -495,7 +502,6 @@ def runClustal(protein):
 	# call(cmd, shell=True)
 
 	p1 = subprocess.Popen(['cat']+files, stdout=subprocess.PIPE)
-	#p1.wait()
 	p2 = subprocess.Popen(cmd.split(), stdin=p1.stdout)
 	p2.wait()
 	p1.stdout.close()
@@ -720,8 +726,8 @@ def treeClusters(protein, threshold):
 	t = Tree(treefile)
 
 	# matrix conatins also the dropped elements, even though probably/not yet needed
-	if VERBOSITY:
-		print()
+	# if VERBOSITY:
+	# 	print()
 
 	pws = pd.read_csv(matrixfile, sep='\t', header=1, index_col=0, na_values='-')
 
@@ -772,6 +778,9 @@ def treeClusters(protein, threshold):
 				for leaf in clusters[-1]:
 					leaf.cl = len(clusters)-1
 
+
+	print('clusters',sum(len(i) for i in clusters))
+
 	# go through clusters, >=2 neighbors have len <= 2, fuse them
 	cleanclusters = []
 	current = []
@@ -786,6 +795,8 @@ def treeClusters(protein, threshold):
 				cleanclusters.append(current)
 				current = []
 			cleanclusters.append(cluster)
+
+	print('cleanclusters', sum(len(i) for i in cleanclusters))
 
 	with open(os.path.join(PATH, protein+'_promoters_groups.csv'), 'w') as clout:
 		clout.write('# Clusters for {} determined with similarity threshhold {} on {}.\n'.format(os.path.basename(matrixfile), threshold, strftime('%x')))
@@ -822,11 +833,212 @@ def treeClusters(protein, threshold):
 	# return t
 
 
+def msaview(protein):
+
+	'''
+	Visualise the MSA & the groups of the megaCC clustering.
+	Adapted from msa_viewer.py
+
+	:uses: {protein}_promoters_groups.csv, {protein}_promoters_kept.fasta
+	:param protein: protein name from phylogenetics workflow
+	:creates: {protein}_grouped_msa.png
+	'''
+
+	alignmentFile = os.path.join(PATH, protein + '_promoters_kept.fasta')
+	groupfn = os.path.join(PATH, protein + '_promoters_groups.csv')
+	outfn = os.path.join(PATH, protein + '_grouped_msa.png')
+
+	if not os.path.isfile(alignmentFile):
+		print('Sorted MSA fasta file not found. Run step 2 for this file to be created.')
+		sys.exit()
+	if not os.path.isfile(groupfn):
+		print('Grouping file not found. Run step 4 for this file to be created.')
+		sys.exit()
+
+	dnacolors = {
+		'A': (203, 0, 0),
+		'T': (0, 0, 203),
+		'U': (0, 0, 203),
+		'G': (0, 203, 0),
+		'C': (203, 0, 191),
+		'N': (0, 0, 0),
+		'-': (255, 255, 255),
+		# these are sometimes added by clustalo aswell
+		'R': (0, 0, 0),  # puRine, A/G
+		'Y': (0, 0, 0),  # pYrimidine, C/T
+		'W': (0, 0, 0),
+		'K': (0, 0, 0),
+		'M': (0, 0, 0),
+		'S': (0, 0, 0)	}
+	clustercolors = [(166, 206, 227), (31, 120, 180), (178, 223, 138), (51, 160, 44), (251, 154, 153), (227, 26, 28),
+					 (253, 191, 111), (255, 127, 0), (202, 178, 214), (106, 61, 154), (255, 255, 153), (177, 89, 40),
+					 (0, 0, 0), (224, 224, 224)]
+
+	data = {}
+	current = None
+
+	with open(alignmentFile) as f:
+		for line in f:
+			line = line.rstrip()
+
+			if line.startswith('>'):
+				current = line.split()[0][1:]
+				data[current] = []
+			else:
+				for char in line:
+					data[current].append(dnacolors[char])
+
+	groupcolors = {}
+	order = []
+	with open(groupfn, 'r') as f:
+		current = 0
+		for line in f:
+			line = line.split('#')[0].rstrip()
+			if not line:
+				continue
+
+			# Allows definition of cluster names in file
+			if line.startswith('!'):
+				continue
+
+			cluster = line.split(',')
+			order = order + cluster
+
+			for elem in cluster:
+				groupcolors[elem] = clustercolors[current % len(clustercolors)]
+
+			current += 1
+
+	height = len(order)
+	width = len(next(iter(data.values())))
+	borders = 10
+
+	im = Image.new('RGB', (width + 4 * borders, height), (255, 255, 255))
+
+	for y, elem in enumerate(order):
+		for x in range(borders):
+			im.putpixel((x, y), groupcolors[elem])
+			im.putpixel((x + width + borders, y), groupcolors[elem])
+		try:
+			for x, value in enumerate(data[elem]):
+				im.putpixel((x + borders, y), value)
+		except KeyError:
+			print(elem, alignmentFile)
+			raise
+
+	im.save(outfn)
+
+
+def _makeTree(quality_level=1):
+	'''
+	Create Newick tree with all species represented in refseq_genomes, based on level of genome quality
+	'''
+
+	if not os.path.isfile('refseq_taxids_l{}.txt'.format(quality_level)):
+		taxids(quality_level)
+
+	Sani = NodeSanitizer()
+	TF = TaxFinder()
+
+	outfn = 'refseq_tree_l{}.tre'.format(quality_level)
+
+	#maybe interesting
+	#accs= set()
+
+	# While this file may contain multiple entries for one taxid, this should not impact the tree generation
+
+	with open('refseq_taxids_l{}.txt'.format(quality_level), 'r') as infile:
+		next(infile)
+		lineages = []
+
+		for line in infile:
+			tax, acc, dummy = line.split('\t')
+			#accs.add(acc)
+			li = TF.getLineage(int(tax), display='both')
+			if li:
+				lineages.append(li)
+			else:
+				print('Could not find TaxID `{}` in TaxFinder.'.format(tax))
+
+	tree = {}
+
+	for line in lineages:
+		if line[0] not in tree:
+			tree[line[0]] = set()
+
+		for i in range(1, len(line)):
+			if line[i] not in tree:
+				tree[line[i]] = set()
+			tree[line[i-1]].add(line[i])
+
+	newick = '(root^1);'
+	nodes = ['root^1']
+	while nodes:
+		node = nodes.pop(0)
+		newnodes = tree.pop(node)
+		if newnodes:
+			sanitizedNodes = Sani.sanitize(newnodes)
+			newick = newick.replace(node, '(' + ','.join(sanitizedNodes) + ')' + node)
+			nodes.extend(newnodes)
+
+	with open(outfn, 'w') as outfile:
+		outfile.write(newick)
+
+	Sani.printBadChars()
+
+
+def grouptree(protein, skipclusters, genomequality):
+	'''
+	wrapper to call phylotree.py and plot cluster distribution on tree
+
+	:param protein:
+	:param skipclusters:
+	'''
+
+	groupfn = os.path.join(PATH, protein + '_promoters_groups.csv')
+	outfn = os.path.join(PATH, protein + '_promoters_grouptree.pdf')
+	treefn = 'refseq_tree_l{}.tre'.format(genomequality)
+
+
+	if not os.path.isfile(groupfn):
+		print('Grouping file not found. Run step 4 for this file to be created.')
+		sys.exit()
+
+	if not os.path.isfile(treefn):
+		_makeTree(genomequality)
+
+	prunefn = 'tree_to_prune.txt'
+
+
+	drop = set(int(i) for i in skipclusters if i.isdecimal())
+	if len(drop) != len(skipclusters):
+		skipnames = [i for i in skipclusters if i.isalpha()]
+		with open(groupfn, 'r') as f:
+			i = 0
+			for line in f:
+				line = line.split('#')[0].rstrip()
+				if not line:
+					continue
+
+				if line.startswith('!'):
+					for n in skipnames:
+						if n in line[1:]:
+							drop.add(i)
+				else:
+					i += 1
+
+	t = Tree(treefn, format=8)
+	# tree, treefile, prune, sqrt = False, collapse = True, show_empty_species = True, startnode = None, countTotal = False
+	TM = Clusters(tree=t, treefile=treefn, prune=prunefn, filename=groupfn, dropclusters=drop, show_empty_species=False)
+	TM.renderTree(outfn, 1000, 90)
+
+
 def motifAnalysis(protein, skipclusters):
 	'''Generate motifs of each group within the MSA
 
 	:uses: {protein}_promoters_groups.csv, {protein}_promoters_aligend.fasta
 	:param protein: protein name from phylogenetics workflow
+	:creates: motifs/*
 	'''
 
 	fastafn = os.path.join(PATH, protein + '_promoters_aligned.fasta')
@@ -849,12 +1061,13 @@ def motifAnalysis(protein, skipclusters):
 		i = 0
 		name = ''
 		for line in f:
-			line = line.rstrip().split('#')[0]
+			line = line.split('#')[0].rstrip()
 			if not line:
 				continue
 
-			i = i + 1
 			if str(i) in skipclusters:
+				if not line.startswith('!'):
+					i += 1
 				continue
 
 			# Allows definition of cluster names in file
@@ -870,7 +1083,6 @@ def motifAnalysis(protein, skipclusters):
 				name = ''
 				continue
 
-
 			#allow to drop clusters based on partial name (like 'remerged')
 			if name and any((i in name for i in skipnames)):
 				continue
@@ -879,6 +1091,8 @@ def motifAnalysis(protein, skipclusters):
 				name = ''
 			else:
 				groups['cluster{:02d}'.format(i)] = [seqs[n] for n in cluster]
+
+			i += 1
 
 	motifdict = {}
 
@@ -957,19 +1171,17 @@ def motifAnalysis(protein, skipclusters):
 
 
 
-
-
-tasknames = ['acquire', 'clustal', 'autosort', 'megacc', 'grouping', 'motifs']
+tasknames = ['acquire', 'clustal', 'autosort', 'megacc', 'grouping', 'msaview', 'grouptree', 'motifs']
 
 tasks = {'acquire': ('find and download promoter sequences', getPromoterSeqs, ['evalue', 'length', 'genomequality', 'phylopath']),
 		 'clustal': ('run MSA with clustalo', runClustal, []),
 		 'autosort': ('similarity sort MSA for clustering', autosort, ['drop']),
 		 'megacc': ('run MSA clustering with Megacc', runMegacc, []),
 		 'grouping': ('find groups in clustered MSA', treeClusters, ['threshold']),
+		 'msaview': ('Make plot of the MSA including the groups', msaview, []),
+		 'grouptree': ('Show distributions of the cluster over a tree.', grouptree, ['skipclusters', 'genomequality']),
 		 'motifs': ('analyse MSA cluster groups for motifs', motifAnalysis, ['skipclusters'])}
 
-
-#adapt to run for multiple protein names
 def runWorkflow(addargs, start, end=''):
 	'''
 	Starts the workflow from `start` until `end`. If `end` is empty, the workflow is run until the last element of the workflow.
@@ -979,7 +1191,7 @@ def runWorkflow(addargs, start, end=''):
 	:param end: The name/number of the last element to run or an empty string if the workflow shall be run until the end.
 	'''
 
-	if isinstance(start, int) or start.isdigit():
+	if isinstance(start, int) or start.isdecimal():
 		if int(start) >= len(tasknames):
 			raise ValueError('Only {} tasks exist, number {} is too high.'.format(len(tasknames), int(start)))
 		else:
@@ -989,11 +1201,11 @@ def runWorkflow(addargs, start, end=''):
 	else:
 		startidx = tasknames.index(start)
 
-	if isinstance(end, int) or end.isdigit():
+	if isinstance(end, int) or end.isdecimal():
 		if int(end) >= len(tasknames):
 			raise ValueError('Only {} tasks exist, number {} is too high.'.format(len(tasknames), int(end)))
 		else:
-			endidx = max(int(end), startidx+1)
+			endidx = max(int(end)+1, startidx+1)
 	elif end == '':
 		endidx = len(tasknames)
 	elif end not in tasknames:
@@ -1017,7 +1229,7 @@ if __name__ == '__main__':
 
 	workflow = '\n'.join(textwrap.wrap("""The following is a list of the workflow. The names or numbers can be used for the -s, -e or -o arguments.""",	width=80))
 
-	workflow += '\n\n' + '\n'.join(('{:>2}. {:<8} {}'.format(i, name, tasks[name][0]) for i, name in enumerate(tasknames)))
+	workflow += '\n\n' + '\n'.join(('{:>2}. {:<10} {}'.format(i, name, tasks[name][0]) for i, name in enumerate(tasknames)))
 
 	parser = argparse.ArgumentParser(description='Script for analysis of Promoters. Run for single protein (from Phylogenetics workflow) or use config file')
 
@@ -1035,28 +1247,28 @@ if __name__ == '__main__':
 	parser.add_argument('-pa', '--path', default='', help='Path Prefix which will be added to all generated files & folders')
 
 	# only step 0 - loading
-	group0 = parser.add_argument_group('0. loading', 'Optional arguments applied during step 0: loading.')
+	group0 = parser.add_argument_group('0.', 'Optional arguments applied during step 0: loading.')
 
 	group0.add_argument('--evalue', default=50, type=int, help='Lowest exponent allowed as evalue during hit-collection. Default: 50')
 	group0.add_argument('--length', default=1500, type=int, help='Number of bases in front of CDS to be acquired as promoter sequence. Default: 1500')
-	group0.add_argument('-q', '--genomequality', default=1, type=int, help='Quality level for  refseq genomes. 0: all, 1: at one chromosome, 2: representative/reference')
+	group0.add_argument('-q', '--genomequality', default=1, type=int, help='Quality level for refseq genomes (also in step 6). 0: all, 1: atleast chromosome, 2: representative/reference')
 	# Optional: reconfigure / add extra option to use specific file instead
 	group0.add_argument('--phylopath', default='', help='Specify the filepath for phylogenetics workflow')
 
 	# only step 2 - autosort
-	group2 = parser.add_argument_group('2. autosort', 'Optional arguments applied during step 2: autosort.')
+	group2 = parser.add_argument_group('2.', 'Optional arguments applied during step 2: autosort.')
 
 	group2.add_argument('-d', '--drop', nargs='+', default=[], help='Remove these Accs (or index_from_0) during sorting')
 
 	#only step 4 - grouping
-	group4 = parser.add_argument_group('4. grouping', 'Optional arguments applied during step 4: grouping.')
+	group4 = parser.add_argument_group('4.', 'Optional arguments applied during step 4: grouping.')
 
 	group4.add_argument('-t', '--threshold', type=float, default=0.5, help='Similarity threshold for grouping of clustered MSA. Default: 0.5')
 
-	#only step 5 - motif analysis
-	group5 = parser.add_argument_group('5. motif', 'Optional arguments applied during step 5: motif.')
+	#only step 6/7
+	group6 = parser.add_argument_group('6/7.', 'Optional arguments applied during step 6 & 7: grouptree, motif.')
 
-	group5.add_argument('-sk', '--skipclusters', nargs='+', default=[], help="Don't analyse these groups (ints with index_from_1 or parts of group names)")
+	group6.add_argument('-sk', '--skipclusters', nargs='+', default=[], help="Don't analyse these groups (ints with index_from_0 or parts of group names)")
 
 
 	args = parser.parse_args()
@@ -1071,14 +1283,11 @@ if __name__ == '__main__':
 		init()
 		sys.exit()
 
-
-
 	# check if init has been run
 
 	if args.config:
 		readConfig(args)
 		sys.exit()
-
 
 	PATH = args.path
 	VERBOSITY = args.verbose
@@ -1090,4 +1299,3 @@ if __name__ == '__main__':
 		runWorkflow(args, args.only, args.only)
 	else:
 		runWorkflow(args, args.startfrom, args.end)
-
