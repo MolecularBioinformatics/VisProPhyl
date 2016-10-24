@@ -675,21 +675,17 @@ def runMegacc(protein):
 	treefn = pout.replace('.txt', '.nwk')
 
 	# Megacc does NOT overwrite its own results, do it manually
-	if os.path.isfile(os.path.join(PATH, treefn)):
-		subprocess.call(['rm', treefn])
-		subprocess.call(['rm', pout.replace('.txt', '_summary.txt')])
+	if os.path.isfile(treefn):
+		os.remove(treefn)
 
-	cmd = 'megacc {}-a infer_NJ_nucleotide_pair.mao -d {} -o {}'.format(v, pin, pout)
+	cmd = 'megacc -n {}-a infer_NJ_nucleotide_pair.mao -d {} -o {}'.format(v, pin, pout)
 	subprocess.call(cmd.split())
 
 	# Megacc replaces '^' with an underscore (unlike other characters that do cause problems ...)
-	# need to check in file; problem: '_' also occurs in accession numbers ...
-
-
+	# use RE to replace the _ introduced by megacc & overwrite file
 	with open(treefn, 'r') as f:
 		filestr = f.read()
 
-	# use RE to replace the _ introduced by megacc & overwrite file
 	reg = '_(?=[0-9]+:[0-9].[0-9]+)'
 	filestr = re.sub(reg, '^', filestr)
 
@@ -768,18 +764,14 @@ def treeClusters(protein, threshold):
 
 		if node.sim < threshold or node.is_root():
 			for x in node.iter_descendants():
-				if any(l.cl for l in x.iter_leaves()):
+				# checking just for l.cl will/may overwrite the first generated cluster (l.cl = 0)
+				if any(isinstance(l.cl, int) for l in x.iter_leaves()):
 					continue
 
 				# add a list with all node instances to clusters
 				clusters.append(x.get_leaves())
-
-				#can be deleted since, merging overwrites this anyway, only needed for tests / direct passing of tree
 				for leaf in clusters[-1]:
 					leaf.cl = len(clusters)-1
-
-
-	print('clusters',sum(len(i) for i in clusters))
 
 	# go through clusters, >=2 neighbors have len <= 2, fuse them
 	cleanclusters = []
@@ -795,8 +787,10 @@ def treeClusters(protein, threshold):
 				cleanclusters.append(current)
 				current = []
 			cleanclusters.append(cluster)
-
-	print('cleanclusters', sum(len(i) for i in cleanclusters))
+	# if there's still an open merging cluster left 'close it'
+	if current:
+		merged.append(len(cleanclusters))  # -> index of new (ex-)small (merged) cluster
+		cleanclusters.append(current)
 
 	with open(os.path.join(PATH, protein+'_promoters_groups.csv'), 'w') as clout:
 		clout.write('# Clusters for {} determined with similarity threshhold {} on {}.\n'.format(os.path.basename(matrixfile), threshold, strftime('%x')))
@@ -811,12 +805,13 @@ def treeClusters(protein, threshold):
 			clout.write(','.join([n.name for n in cluster]) + '\n')
 
 			#For tests / returning Tree
-			for leaf in cluster:
-				leaf.cl = i
-				# if i in merged:
-				# 	leaf.add_features(remerged=True)
-				# else:
-				# 	leaf.add_features(remerged=False)
+			# for leaf in cluster:
+			# 	leaf.cl = i # updating to clean cluster numbers
+			# 	if i in merged:
+			# 		leaf.add_features(remerged=True)
+			# 	else:
+			# 		leaf.add_features(remerged=False)
+
 
 	# #simple visualisation for tests
 	# def layout(node):
@@ -870,9 +865,9 @@ def msaview(protein):
 		'K': (0, 0, 0),
 		'M': (0, 0, 0),
 		'S': (0, 0, 0)	}
+
 	clustercolors = [(166, 206, 227), (31, 120, 180), (178, 223, 138), (51, 160, 44), (251, 154, 153), (227, 26, 28),
-					 (253, 191, 111), (255, 127, 0), (202, 178, 214), (106, 61, 154), (255, 255, 153), (177, 89, 40),
-					 (0, 0, 0), (224, 224, 224)]
+					 (253, 191, 111), (255, 127, 0), (202, 178, 214), (106, 61, 154), (255, 255, 179), (255, 234, 77), (177, 89, 40), (0, 0, 0)]
 
 	data = {}
 	current = None
@@ -913,7 +908,7 @@ def msaview(protein):
 	width = len(next(iter(data.values())))
 	borders = 10
 
-	im = Image.new('RGB', (width + 4 * borders, height), (255, 255, 255))
+	im = Image.new('RGB', (width + 2 * borders, height), (255, 255, 255))
 
 	for y, elem in enumerate(order):
 		for x in range(borders):
@@ -1100,28 +1095,36 @@ def motifAnalysis(protein, skipclusters):
 	def groupsimilarity(seqs):
 		score = 0
 		for pos in zip(*seqs):
-			score += pos.count(pos[0]) == len(pos)
+			# # score +1 only if 100% conserved
+			# score += pos.count(pos[0]) == len(pos)
+
+			# score +1 if at least x % conserved
+			score += pos.count(pos[0])/float(len(pos)) >= 0.8
+
+			# # score +x%
+			# score += pos.count(pos[0]) / float(len(pos))
 		return score
 
 	for name, gr in groups.items():
 		# split group into sections with high similarity
+
 		motifpos = []
+		name = name.replace(' ', '')
 
-		# The algorithm still produces overlapping groups
-		# porbably needs to run without overlap-check first
-		# then check all positions & merge if the overlap by X bases [or overlap by x-percent]
-
-		winlen = 50
-		scoremin = 45 #meaning 100% conserved bases inside the window
+		winlen = 25
+		scoremin = 20 #meaning this number of conserved bases inside the window
 		#maximum number of bases between two overlapping clusters, to fuse them. This principally allows gaps in motifs
-		allowed_overlap = 3
+		allowed_overlap = 2
 
 		start = None
 
 		for i in range(len(gr[0]) - winlen):
 			seqs = [str(rec.seq)[i:i+winlen] for rec in gr]
-			if '-' in ''.join(seqs):
+			# if ANY gap/non base char [N etc] in window, close current motif
+			# opt: be less restrictive here, allow 1-x % gaps ?
+			if set('ATGC') != set(''.join(seqs)):
 				if start is not None:
+					# if an older motif exists, overlaps & is within allowed distance: extend old motif
 					if motifpos and i - 1 + winlen - motifpos[-1][1] <= allowed_overlap:
 						motifpos[-1][1] = i - 1 + winlen
 					else:
@@ -1129,44 +1132,47 @@ def motifAnalysis(protein, skipclusters):
 					start = None
 				continue
 
+			# open new motif
 			if start is None and groupsimilarity(seqs) >= scoremin:
 				start = i
+
+			# close open motif
 			elif start is not None and groupsimilarity(seqs) <= scoremin:
+				# if an older motif exists, overlaps & is within allowed distance: extend old motif
 				if motifpos and i - 1 + winlen - motifpos[-1][1] <= allowed_overlap:
 					motifpos[-1][1] = i - 1 + winlen
 				else:
 					motifpos.append([start, i - 1 + winlen])
 				start = None
 
-
-		#ToDo: the pos should be added to the motif instance, so it can be saved later on!
 		for i, pos in enumerate(motifpos):
 			motifdict[name+'-{:02d}'.format(i)] = motifs.create([str(rec.seq)[pos[0]:pos[1]] for rec in gr], alphabet=IUPAC.unambiguous_dna)
-			#print(name+'_{:02d}'.format(i), motifdict[name+'_{:02d}'.format(i)].consensus, pos)
+			#the attributes 'matirx_id' and 'name' are internally used by the Bio.motifs.jaspar module and are written to the output
+			setattr(motifdict[name + '-{:02d}'.format(i)], 'matrix_id', name + '-{:02d}'.format(i))
+			setattr(motifdict[name + '-{:02d}'.format(i)], 'name', 'Start/End (in {}): {}/{}'.format(fastafn, pos[0], pos[1]))
 
-	#if logos should be saved in an extra subfolder
 	motiffolder = 'motifs'
-	if motiffolder:
-		# unless the window parameters are fixed 'exist_ok' should be probably be False
-		# otherwise files from a prevoius analysis could remain and mix into the new results
-		os.makedirs(os.path.join(PATH, motiffolder), exist_ok=True)
+	# results with different parameters may yield less files, therefore all old files should be removed
+	if os.path.isdir(os.path.join(PATH, motiffolder)):
+		subprocess.call(['rm', '-r', os.path.join(PATH, motiffolder)])
+
+	os.makedirs(os.path.join(PATH, motiffolder))
 
 
 	#Opt Todo: make a single file with all consensus sequences?!
-
 	for name, motif in motifdict.items():
 		#the heigth (bit value) in logos doesnt seem quite correct currently
 		motif.weblogo(os.path.join(PATH, motiffolder, '{}_{}_seqlogo.png'.format(protein, name)))
 
 	for name, gr in groups.items():
-		grmotifs = [v for k, v in motifdict.items() if name in k]
+		grmotifs = sorted([v for k, v in motifdict.items() if name.replace(' ', '') == k.split('-')[0]], key=lambda x: x.matrix_id)
 
 		#dont make a file for groups where no conserved motif was created
 		if not len(grmotifs):
 			continue
 
 		with open(os.path.join(PATH, motiffolder, '{}_{}_motifs.jas'.format(protein, name)), 'w') as out:
-
+			#header is '>{matrix_id} {name}'
 			out.write(motifs.write(grmotifs, 'jaspar'))
 
 
