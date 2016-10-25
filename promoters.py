@@ -21,12 +21,16 @@ VERBOSITY = False
 Entrez.email = 'nicolai.von-kuegelgen@student.uni-tuebingen.de'
 Entrez.tool = 'PromoterAnalysis-NvK'
 
-# ToDo Either integrate msa-viewer functions or import them (or make the scripts work well after each other)
-
 # ToDo: extras for config file
 #	- functions (& threshhold) used in treeClusters
 #	- numbers & normalisation used in _similarity
+#	- numbers in motif analysis function
 
+
+# ToDo: clean state & file checking
+# - to avoid wierd bugs always clean folders into which files will be downloaded
+#  possible exceptions: featuretables (should be cleaned/updated regularly but not with every run)
+# - see that all functions give (nice) errors if necessary files are missing
 
 def _myGetBasename(name):
 	'''
@@ -39,6 +43,7 @@ def _myGetBasename(name):
 	return os.path.splitext(os.path.basename(name))[0]
 
 
+# ToDo: forced call of this should update all files from scratch / 'reinitialise'
 def init():
 	'''
 	Creates some files to start with a new project. Existing files will not be overwritten.
@@ -95,7 +100,7 @@ class taxids:
 		if not os.path.isfile('assembly_summary_refseq.txt'):
 			subprocess.call('rsync -q --copy-links --times rsync://ftp.ncbi.nlm.nih.gov/genomes/ASSEMBLY_REPORTS/assembly_summary_refseq.txt .'.split())
 
-		taxid_cache = {} #(acc, quality, category)
+		taxid_cache = {} #tax: (acc, quality, category)
 
 		with open('assembly_summary_refseq.txt', 'r') as f, open('refseq_taxids_l{}.txt'.format(qlevel), 'w') as out:
 			next(f)
@@ -216,7 +221,6 @@ def readConfig(defaultargs):
 			runWorkflow(args, args.startfrom, args.end)
 
 
-
 #  If this script is to be used without the phylogenetics.py workflow (up to step 2) then this function will have to be
 #  substituted with/adapted to a parser for a list of protein Accession-IDs and probably also the TaxFinder module/class
 def _getUniqueAccs(protein, taxid, cutoff=50, phylopath=''):
@@ -320,7 +324,7 @@ def _loadGenomeFeatures(protein, taxid):
 			continue
 
 		if VERBOSITY:
-			print('Downloading Genome annotation table for species: {:<10}'.format(protein), end='\r')
+			print('Downloading Genome annotation table for species: {:<10}'.format(tax), end='\r')
 
 		ftp = taxid.map[tax][1]
 		fn = ftp.split('/')[-1]
@@ -371,7 +375,8 @@ def _extractPromoterPos(protein):
 					lline = line.rstrip().split('\t')
 	#Columns in *_feature_table.txt
 	#feature0	class1	assembly2	assembly_unit3	seq_type4	chromosome5	genomic_accession6	start7	end8	strand9
-	#product_accession10	non-redundant_refseq11	related_accession12	name13	symbol14	GeneID15	locus_tag16
+	#product_accession10	non-redundant_refseq11	related_accession12	name13	symbol14	GeneID15	locus_tag16 feature_interval_length17	product_length18	attributes19
+
 					if lline[10] not in accs:
 						continue
 
@@ -397,7 +402,6 @@ def _loadPromoterSeq(protein, length=1500):
 	"""
 
 	entries = set()
-	tax_cache = set()
 	os.makedirs(os.path.join(PATH, 'PromoterSeqs_{}'.format(protein)), exist_ok=True)
 
 	with open(os.path.join(PATH, '{}_hitfeatures.tsv'.format(protein)), 'r') as f, open(os.path.join(PATH, 'PromoterSeqs_{}/annotation.tsv'.format(protein)), 'w') as annotation:
@@ -409,8 +413,9 @@ def _loadPromoterSeq(protein, length=1500):
 
 			tax, genome_acc, start, end, strand = lline[1:6]
 
-			#Multiple proteins may come from one (unique) genomic locus
-			entry = (tax, genome_acc, start, end)
+			# Multiple proteins may come from one (unique) genomic locus
+			# end of entry (e.g. from multiple isoforms) is irrelevant since we only look at start
+			entry = (tax, genome_acc, start)
 			if entry in entries:
 				continue
 			else:
@@ -420,7 +425,7 @@ def _loadPromoterSeq(protein, length=1500):
 			#if os.path.isfile('PromoterSeqs_{}/{}.fasta'.format(protein, lline[6]+'_'+tax)): # / lline[0]
 				#continue
 			if VERBOSITY:
-				print('Downloading promoter sequences for hits of {}. Found: {} ({} multiple){:<6}'.format(protein, len(entries), i-len(entries), ''), end='\r')
+				print('Downloading promoter sequences for hits of {}. Found: {} ({} multiple){:<6}'.format(protein, len(entries), i-len(entries)+1, ''), end='\r')
 
 			#start from the *_hitfeatures file is the CDS start, we want region downstream of that
 			if strand == '+':
@@ -443,10 +448,7 @@ def _loadPromoterSeq(protein, length=1500):
 			record = SeqIO.read(handle, "fasta")
 
 			#Only short header in fasta file
-			if tax in tax_cache:
-				record.id = '{}^{}'.format(lline[0], tax)
-			else:
-				record.id = '{}^{}'.format(lline[0], tax)
+			record.id = '{}^{}'.format(lline[0], tax)
 			record.description = ''
 
 			with open(os.path.join(PATH, 'PromoterSeqs_{}/{}.fasta'.format(protein, lline[0])), 'w') as out:
@@ -484,6 +486,8 @@ def runClustal(protein):
 	:param protein: protein name from phylogenetics workflow
 	:creates: {protein}_promoters_aligned.fasta
 	'''
+
+	# TODO: check there are some fasta files there, Popen.wait() will otherwise deadlock
 
 	# maybe only with 2nd level verbosity ?
 	v = ''
@@ -1108,48 +1112,76 @@ def motifAnalysis(protein, skipclusters):
 	for name, gr in groups.items():
 		# split group into sections with high similarity
 
-		motifpos = []
 		name = name.replace(' ', '')
 
-		winlen = 25
-		scoremin = 20 #meaning this number of conserved bases inside the window
-		#maximum number of bases between two overlapping clusters, to fuse them. This principally allows gaps in motifs
-		allowed_overlap = 2
+		# First remove ('conserved') gaps from the group - they are irrelevant & make problems
+		# remember positions of gaps to later on adapt the motif positions for the fasta-file
+		seqs = [''] * len(gr)
+		gappos = []
+		gapcount = 0
 
+		for i, pos in enumerate(zip(*[str(rec.seq) for rec in gr])):
+			if pos.count('-') == len(pos):
+				gapcount += 1
+			else:
+				gappos.append(gapcount)
+				for j, base in enumerate(pos):
+					seqs[j] += base
+
+		motifpos = []
+		winlen = 40
+		scoremin = 35 #meaning this number of conserved bases inside the window
 		start = None
 
-		for i in range(len(gr[0]) - winlen):
-			seqs = [str(rec.seq)[i:i+winlen] for rec in gr]
+		for i in range(len(seqs[0]) - winlen):
+			window = [seq[i:i+winlen] for seq in seqs]
 			# if ANY gap/non base char [N etc] in window, close current motif
 			# opt: be less restrictive here, allow 1-x % gaps ?
-			if set('ATGC') != set(''.join(seqs)):
+			if set('ATGC') != set(''.join(window)):
 				if start is not None:
-					# if an older motif exists, overlaps & is within allowed distance: extend old motif
-					if motifpos and i - 1 + winlen - motifpos[-1][1] <= allowed_overlap:
-						motifpos[-1][1] = i - 1 + winlen
-					else:
-						motifpos.append([start, i - 1 + winlen])
+					motifpos.append([start, i - 1 + winlen])
 					start = None
 				continue
 
-			# open new motif
-			if start is None and groupsimilarity(seqs) >= scoremin:
+			if start is None and groupsimilarity(window) >= scoremin:
 				start = i
 
-			# close open motif
-			elif start is not None and groupsimilarity(seqs) <= scoremin:
-				# if an older motif exists, overlaps & is within allowed distance: extend old motif
-				if motifpos and i - 1 + winlen - motifpos[-1][1] <= allowed_overlap:
-					motifpos[-1][1] = i - 1 + winlen
-				else:
-					motifpos.append([start, i - 1 + winlen])
+			elif start is not None and groupsimilarity(window) <= scoremin:
+				motifpos.append([start, i - 1 + winlen])
 				start = None
 
-		for i, pos in enumerate(motifpos):
-			motifdict[name+'-{:02d}'.format(i)] = motifs.create([str(rec.seq)[pos[0]:pos[1]] for rec in gr], alphabet=IUPAC.unambiguous_dna)
-			#the attributes 'matirx_id' and 'name' are internally used by the Bio.motifs.jaspar module and are written to the output
+
+		# A lot of the position pairs overlap
+		# go through them and fuse as necessary
+		abs_overlap = 3
+		per_overlap = 0.66
+
+		if len(motifpos) > 1:
+			clearpos = []
+			current = motifpos[0][:]
+			for start, end in motifpos[1:]:
+				prev_start, prev_end = current
+				#check for overlap, fuse if
+				# - end of second/current hits is shifted by max `abs_overlap` to first
+				# - overlap is the major part (>= per_overlap) of either hit
+				if start < prev_end and (end - prev_end <= abs_overlap  or (prev_end - start) / float(end - start) >= per_overlap or (prev_end - start) / float(prev_end - prev_start) >= per_overlap):
+					current[1] = end
+				# No or not sufficient overlap, save previous, start with new current
+				else:
+					clearpos.append(current)
+					current = [start, end]
+			# save last current
+			clearpos.append(current)
+		else:
+			clearpos = motifpos
+
+		# make motif objects
+		for i, pos in enumerate(clearpos):
+			motifdict[name+'-{:02d}'.format(i)] = motifs.create([seq[pos[0]:pos[1]] for seq in seqs], alphabet=IUPAC.unambiguous_dna)
+			# the attributes 'matirx_id' and 'name' are internally used by the Bio.motifs.jaspar module and are written to the header
+			# save motif name (as for seq-logo files) & position in fasta file to header
 			setattr(motifdict[name + '-{:02d}'.format(i)], 'matrix_id', name + '-{:02d}'.format(i))
-			setattr(motifdict[name + '-{:02d}'.format(i)], 'name', 'Start/End (in {}): {}/{}'.format(fastafn, pos[0], pos[1]))
+			setattr(motifdict[name + '-{:02d}'.format(i)], 'name', 'Start/End (in {}): {}/{}'.format(fastafn, pos[0]+gappos[pos[0]], pos[1]+gappos[pos[1]]))
 
 	motiffolder = 'motifs'
 	# results with different parameters may yield less files, therefore all old files should be removed
