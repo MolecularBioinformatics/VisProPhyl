@@ -31,6 +31,7 @@ Entrez.tool = 'PromoterAnalysis-NvK'
 # - to avoid wierd bugs always clean folders into which files will be downloaded
 #  possible exceptions: featuretables (should be cleaned/updated regularly but not with every run)
 # - see that all functions give (nice) errors if necessary files are missing
+# - check/fix docstrings
 
 def _myGetBasename(name):
 	'''
@@ -486,9 +487,6 @@ def runClustal(protein):
 	:param protein: protein name from phylogenetics workflow
 	:creates: {protein}_promoters_aligned.fasta
 	'''
-
-	# TODO: check there are some fasta files there, Popen.wait() will otherwise deadlock
-
 	# maybe only with 2nd level verbosity ?
 	v = ''
 	if VERBOSITY:
@@ -498,6 +496,9 @@ def runClustal(protein):
 	pout = os.path.join(PATH, '{}_promoters_aligned.fasta'.format(protein))
 
 	files = glob(pin)
+	if not len(files):
+		print('No fasta files for MSA could be found. Exiting script.')
+		sys.exit()
 
 	cmd = 'clustalo -i - {}-o {} --force'.format(v, pout)
 
@@ -1032,6 +1033,83 @@ def grouptree(protein, skipclusters, genomequality):
 	TM.renderTree(outfn, 1000, 90)
 
 
+def clusterisoforms(protein, skipclusters, isoforms, guess=False):
+
+	# parse annotation table
+	annotationfn =
+	groupfn =
+	outfn =
+
+	data = {}
+	names = []
+	guessed = {}
+
+	with open(annotationfn, 'r') as f:
+		next(f)
+		for line in f:
+			lline = line.rstrip().split('\t')
+			if lline[6].lower() in isoforms:
+				data[lline[0]] = lline[6].lower()
+				names.append(lline[7])
+			elif guess:
+				guessed[lline[0]] = lline[7]
+				data[lline[0]] = None
+			else:
+				data[lline[0]] = None
+
+	# guessing
+	# find common associated word groups in `names`
+	# then loop through `guessed` and use aboce info to (try to) match a name to one of the groups, overwrite data[acc]
+
+	#go through groups
+	groups = {}
+	with open(groupfn, 'r') as f:
+		i = 0
+		name = ''
+		for line in f:
+			line = line.split('#')[0].rstrip()
+			if not line:
+				continue
+
+			if str(i) in skipclusters:
+				if not line.startswith('!'):
+					i += 1
+				continue
+
+			if line.startswith('!'):
+				name = line[1:]
+				continue
+
+			cluster = line.split(',')
+
+			if len(cluster) == 1:
+				if VERBOSITY:
+					print("Skipped '{}' because there's only one entry.".format(name or 'cluster{:02d}'.format(i)))
+				name = ''
+				continue
+
+			if name and any((i in name for i in skipnames)):
+				continue
+			elif name:
+				groups[name] = [seqs[n] for n in cluster]
+				name = ''
+			else:
+				groups['cluster{:02d}'.format(i)] = [seqs[n] for n in cluster]
+
+			i += 1
+
+	with open(outfn, 'w') as out:
+		out.write('#HEADER\n') #Todo
+		for name, gr in groups.items()
+			isos = []
+			for acc in gr:
+				acc = acc.split('^')[0]
+				isos.append(data[acc])
+			counts = {i: isos.count(i.lower()) for i in isoforms+[None]}
+			out.write('>{}\n'.format(name))
+			out.write(', '.join('{}: {}'.format(k, float(v)/len(gr)) for k,v in counts) + '\n')
+
+
 def motifAnalysis(protein, skipclusters):
 	'''Generate motifs of each group within the MSA
 
@@ -1129,8 +1207,8 @@ def motifAnalysis(protein, skipclusters):
 					seqs[j] += base
 
 		motifpos = []
-		winlen = 40
-		scoremin = 35 #meaning this number of conserved bases inside the window
+		winlen = 50
+		scoremin = 45 #meaning this number of conserved bases inside the window
 		start = None
 
 		for i in range(len(seqs[0]) - winlen):
@@ -1190,8 +1268,6 @@ def motifAnalysis(protein, skipclusters):
 
 	os.makedirs(os.path.join(PATH, motiffolder))
 
-
-	#Opt Todo: make a single file with all consensus sequences?!
 	for name, motif in motifdict.items():
 		#the heigth (bit value) in logos doesnt seem quite correct currently
 		motif.weblogo(os.path.join(PATH, motiffolder, '{}_{}_seqlogo.png'.format(protein, name)))
@@ -1202,6 +1278,22 @@ def motifAnalysis(protein, skipclusters):
 		#dont make a file for groups where no conserved motif was created
 		if not len(grmotifs):
 			continue
+
+		with open(os.path.join(PATH, motiffolder, '{}_{}_motifconsensus.txt'.format(protein, name)), 'w') as out:
+			for motif in grmotifs:
+				out.write('>{} {}\n'.format(motif.matrix_id, motif.name))
+				out.write('Consensus: {}\n'.format(str(motif.consensus)))
+
+				regex = ''
+				for letters in zip(*motif.instances):
+					if letters.count(letters[0]) == len(letters):
+						regex += letters[0]
+					else:
+						regex += '[{}]'.format(''.join(set(letters)))
+
+				out.write('RegEx: {}\n'.format(regex))
+				out.write('\n')
+
 
 		with open(os.path.join(PATH, motiffolder, '{}_{}_motifs.jas'.format(protein, name)), 'w') as out:
 			#header is '>{matrix_id} {name}'
@@ -1251,8 +1343,22 @@ def runWorkflow(addargs, start, end=''):
 	else:
 		endidx = tasknames.index(end) + 1
 
+	dontids = []
+	for dont in addargs.dontdo:
+		if isinstance(dont, int) or dont.isdecimal():
+			if int(dont) >= len(tasknames):
+				raise ValueError('Only {} tasks exist, number {} is too high.'.format(len(tasknames), int(dont)))
+			else:
+				dontids += [dont]
+		elif dont not in tasknames:
+			raise ValueError('{} is no valid task.'.format(dont))
+		else:
+			dontids += [tasknames.index(dont)]
 
-	for taskname in tasknames[startidx:endidx]:
+
+	for i, taskname in enumerate(tasknames[startidx:endidx]):
+		if i in dontids:
+			continue
 		if VERBOSITY:
 			print('{}: "{}"'.format(taskname, tasks[taskname][0]))
 		task = tasks[taskname][1]
@@ -1281,7 +1387,8 @@ if __name__ == '__main__':
 	parser.add_argument('-v', '--verbose', action='store_true', help='Be verbose.')
 	parser.add_argument('-s', '--startfrom', default=0, help='Run from and including this step') # [e.g. 7 or hist]
 	parser.add_argument('-e', '--end', default='', help='Stop after this step, ignored if smaller than start') # [e.g. 7 or hist]
-	parser.add_argument('-o', '--only', default='', help='Run only the given step, takes precedence over -s and -e') # [e.g. 4 or unique]
+	parser.add_argument('-dd', '--dontdo', default=[], nargs='+', help='Skip this step')
+	parser.add_argument('-o', '--only', default='', help='Run only the given step, takes precedence over other flags') # [e.g. 4 or unique]
 	parser.add_argument('-pa', '--path', default='', help='Path Prefix which will be added to all generated files & folders')
 
 	# only step 0 - loading
