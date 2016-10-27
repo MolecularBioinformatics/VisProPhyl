@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import os
 import sys
-from ete3 import Tree, TreeStyle, faces, AttrFace
+from ete3 import Tree, TreeStyle, faces, AttrFace, TextFace, NodeStyle
 import pandas as pd
 import numpy as np
 from scipy.stats.mstats import gmean
@@ -154,8 +154,8 @@ def readConfig(defaultargs):
 			raise ValueError
 
 	vartransform = {'verbose': checkbool, 'startfrom': lambda x: x, 'only': lambda x: x, 'end': lambda x: x, 'path': lambda x: x,
-					'evalue': int, 'genomequality': int, 'phylopath': lambda x: x, 'length': int,
-					'drop': lambda x: x.split(), 'threshold': float, 'skipclusters': lambda x: x.split()}
+					'evalue': int, 'genomequality': int, 'phylopath': lambda x: x, 'length': int, 'dontdo': lambda x: x.split(),
+					'drop': lambda x: x.split(), 'threshold': float, 'skipclusters': lambda x: x.split(), 'isoforms': lambda x: x.split()}
 
 	runargs = []
 	current = None
@@ -778,6 +778,7 @@ def treeClusters(protein, threshold):
 				for leaf in clusters[-1]:
 					leaf.cl = len(clusters)-1
 
+	# TODO: only merge if cluster is a node and has a 'direct sister' in the clusters where its supposed to end up
 	# go through clusters, >=2 neighbors have len <= 2, fuse them
 	cleanclusters = []
 	current = []
@@ -806,7 +807,7 @@ def treeClusters(protein, threshold):
 			else:
 				note = ''
 
-			clout.write('!Cluster {}{}\n'.format(i, note))
+			clout.write('!Cluster {:02d}{}\n'.format(i, note))
 			clout.write(','.join([n.name for n in cluster]) + '\n')
 
 			#For tests / returning Tree
@@ -1033,83 +1034,6 @@ def grouptree(protein, skipclusters, genomequality):
 	TM.renderTree(outfn, 1000, 90)
 
 
-def clusterisoforms(protein, skipclusters, isoforms, guess=False):
-
-	# parse annotation table
-	annotationfn =
-	groupfn =
-	outfn =
-
-	data = {}
-	names = []
-	guessed = {}
-
-	with open(annotationfn, 'r') as f:
-		next(f)
-		for line in f:
-			lline = line.rstrip().split('\t')
-			if lline[6].lower() in isoforms:
-				data[lline[0]] = lline[6].lower()
-				names.append(lline[7])
-			elif guess:
-				guessed[lline[0]] = lline[7]
-				data[lline[0]] = None
-			else:
-				data[lline[0]] = None
-
-	# guessing
-	# find common associated word groups in `names`
-	# then loop through `guessed` and use aboce info to (try to) match a name to one of the groups, overwrite data[acc]
-
-	#go through groups
-	groups = {}
-	with open(groupfn, 'r') as f:
-		i = 0
-		name = ''
-		for line in f:
-			line = line.split('#')[0].rstrip()
-			if not line:
-				continue
-
-			if str(i) in skipclusters:
-				if not line.startswith('!'):
-					i += 1
-				continue
-
-			if line.startswith('!'):
-				name = line[1:]
-				continue
-
-			cluster = line.split(',')
-
-			if len(cluster) == 1:
-				if VERBOSITY:
-					print("Skipped '{}' because there's only one entry.".format(name or 'cluster{:02d}'.format(i)))
-				name = ''
-				continue
-
-			if name and any((i in name for i in skipnames)):
-				continue
-			elif name:
-				groups[name] = [seqs[n] for n in cluster]
-				name = ''
-			else:
-				groups['cluster{:02d}'.format(i)] = [seqs[n] for n in cluster]
-
-			i += 1
-
-	with open(outfn, 'w') as out:
-		out.write('#HEADER\n') #Todo
-		for name, gr in groups.items()
-			isos = []
-			for acc in gr:
-				acc = acc.split('^')[0]
-				isos.append(data[acc])
-			counts = {i: isos.count(i.lower()) for i in isoforms+[None]}
-			out.write('>{}\n'.format(name))
-			out.write(', '.join('{}: {}'.format(k, float(v)/len(gr)) for k,v in counts) + '\n')
-
-
 def motifAnalysis(protein, skipclusters):
 	'''Generate motifs of each group within the MSA
 
@@ -1152,6 +1076,11 @@ def motifAnalysis(protein, skipclusters):
 				name = line[1:]
 				continue
 
+			#allow to drop clusters based on partial name (like 'remerged')
+			if name and any((i in name for i in skipnames)):
+				name = ''
+				continue
+
 			cluster = line.split(',')
 
 			if len(cluster) == 1:
@@ -1160,10 +1089,7 @@ def motifAnalysis(protein, skipclusters):
 				name = ''
 				continue
 
-			#allow to drop clusters based on partial name (like 'remerged')
-			if name and any((i in name for i in skipnames)):
-				continue
-			elif name:
+			if name:
 				groups[name] = [seqs[n] for n in cluster]
 				name = ''
 			else:
@@ -1300,8 +1226,168 @@ def motifAnalysis(protein, skipclusters):
 			out.write(motifs.write(grmotifs, 'jaspar'))
 
 
+#opt Todo's: implement guessing &/ automatic detection of isoform names
+def clusterisoforms(protein, skipclusters, isoforms, guess=False):
+	'''
+	Determine the protein isoform composition of all groups.
 
-tasknames = ['acquire', 'clustal', 'autosort', 'megacc', 'grouping', 'msaview', 'grouptree', 'motifs']
+	:param protein:
+	:param skipclusters:
+	:param isoforms: list with all knwon/possible isoforms (gene symbols)
+	:param guess: Try to guess isoform if gene symbol doesn't match [not yet implemented]
+	'''
+	annotationfn = os.path.join(PATH, 'PromoterSeqs_{}'.format(protein), 'annotation.tsv')
+	groupfn = os.path.join(PATH, protein + '_promoters_groups.csv')
+	outfn = os.path.join(PATH, protein + '_promoters_isoforms.txt')
+
+	if not os.path.isfile(groupfn):
+		print('Grouping file not found. Run step 4 for this file to be created.')
+		sys.exit()
+
+	if not os.path.isfile(annotationfn):
+		print('Annotation file for promoter sequences not found. Run step 0 for this file to be created.')
+		sys.exit()
+
+	if not len(isoforms):
+		print('No isoforms specified, analysis is not possible! Skipping this step.')
+		return
+
+	data = {}
+	names = []
+	guessed = {}
+
+	with open(annotationfn, 'r') as f:
+		next(f)
+		for line in f:
+			lline = line.rstrip().split('\t')
+			if lline[6].lower() in isoforms:
+				data[lline[0]] = lline[6].lower()
+				names.append(lline[7])
+			elif guess:
+				guessed[lline[0]] = lline[7]
+				data[lline[0]] = None
+			else:
+				data[lline[0]] = None
+
+	# guessing
+	# find common associated word groups in `names`
+	# then loop through `guessed` and use above info to (try to) match a name to one of the groups, overwrite data[acc]
+
+	groups = {}
+	skipnames = [i for i in skipclusters if i.isalpha()]
+	with open(groupfn, 'r') as f:
+		i = 0
+		name = ''
+		for line in f:
+			line = line.split('#')[0].rstrip()
+			if not line:
+				continue
+
+			if str(i) in skipclusters:
+				if not line.startswith('!'):
+					i += 1
+				continue
+
+			if line.startswith('!'):
+				name = line[1:]
+				continue
+
+			if name and any((i in name for i in skipnames)):
+				name = ''
+				continue
+
+			cluster = line.split(',')
+
+			if len(cluster) == 1:
+				if VERBOSITY:
+					print("Skipped '{}' because there's only one entry.".format(name or 'cluster{:02d}'.format(i)))
+				name = ''
+				continue
+
+			if name:
+				groups[name] = cluster
+				name = ''
+			else:
+				groups['cluster{:02d}'.format(i)] = cluster
+
+			i += 1
+
+	counts = {}
+	for name, gr in groups.items():
+		isos = []
+		for acc in gr:
+			acc = acc.split('^')[0]
+			isos.append(data[acc])
+		l = float(len(isos))
+		counts[name] = {i: isos.count(i.lower()) / l for i in isoforms}
+		counts[name].update({None: isos.count(None) / l})
+
+
+	with open(outfn, 'w') as out:
+		out.write('#Isoform distribution of clusters. Known Isoforms are: {}; other genesymbols are counted as `None`.\n'.format(', '.join(isoforms)))
+		for name in sorted(groups.keys()):
+			out.write('>{}\n'.format(name))
+			out.write(', '.join('{}: {}'.format(k, v) for k, v in counts[name].items()) + '\n\n')
+
+	## Tree visulisation ##
+
+	treefile = os.path.join(PATH, protein + '_promoters_megacc.nwk')
+	outfn2 = os.path.join(PATH, protein + '_promoters_isoformstree.pdf')
+
+	if not os.path.isfile(treefile):
+		print('Newick-tree file not found. Run step 3 for this file to be created.')
+		sys.exit()
+
+	t = Tree(treefile)
+
+	# for each group add NodeStyle to a dict to color lines according to group
+	styles = {}
+	colors = ['#a6cee3','#1f78b4','#b2df8a','#33a02c','#fb9a99','#e31a1c','#fdbf6f','#ff7f00','#cab2d6','#6a3d9a','#ffffb3', '#ffea4d', '#b15928', '#c8c8c8']
+	for i, name in enumerate(sorted(groups.keys(), key=lambda x: int(x.replace(' (remerged)', '')[-2:]))):
+		style = NodeStyle()
+		style["vt_line_color"] = colors[i % len(colors)]
+		style["hz_line_color"] = colors[i % len(colors)]
+		styles[name] = style
+
+	for node in t.traverse('postorder'):
+		# Only leaves are named in a newick file!
+		node.add_features(cl=None)
+
+		if node.is_leaf():
+			# all node.names are acc^tax
+			# This list should always have one hit - otherwise grouping did an error
+			cluster  = [name for name, accs in groups.items() if node.name in accs]
+			if len(cluster) == 1:
+				node.cl = cluster[0]
+			node.add_features(iso=data[node.name.split('^')[0]])
+
+		else:
+			#if all leaves have one identical cluster, assign this to the node aswell
+			clusters = [n.cl for n in node.get_leaves()]
+			if clusters.count(clusters[0]) == len(clusters):
+				node.cl= clusters[0]
+
+		if node.cl is not None:
+			node.set_style(styles[node.cl])
+
+
+	#simple visualisation for tests
+	def layout(node):
+		if node.is_leaf():
+			faces.add_face_to_node(AttrFace("iso"), node, column=0, position="branch-right")
+
+		if node.cl and node.cl != node.get_sisters()[0].cl:
+			faces.add_face_to_node(AttrFace("cl"), node, column=0, position="branch-top")
+
+	ts = TreeStyle()
+	ts.layout_fn = layout
+	ts.show_leaf_name = False
+	#t.show(tree_style=ts)
+	t.render(outfn2, tree_style=ts, w=1000)
+
+
+
+tasknames = ['acquire', 'clustal', 'autosort', 'megacc', 'grouping', 'msaview', 'grouptree', 'motifs', 'isoforms']
 
 tasks = {'acquire': ('find and download promoter sequences', getPromoterSeqs, ['evalue', 'length', 'genomequality', 'phylopath']),
 		 'clustal': ('run MSA with clustalo', runClustal, []),
@@ -1310,7 +1396,8 @@ tasks = {'acquire': ('find and download promoter sequences', getPromoterSeqs, ['
 		 'grouping': ('find groups in clustered MSA', treeClusters, ['threshold']),
 		 'msaview': ('Make plot of the MSA including the groups', msaview, []),
 		 'grouptree': ('Show distributions of the cluster over a tree.', grouptree, ['skipclusters', 'genomequality']),
-		 'motifs': ('analyse MSA cluster groups for motifs', motifAnalysis, ['skipclusters'])}
+		 'motifs': ('analyse MSA cluster groups for motifs', motifAnalysis, ['skipclusters']),
+		 'isoforms': ('Determine isoform distribution of clusters', clusterisoforms, ['skipclusters', 'isoforms'])}
 
 def runWorkflow(addargs, start, end=''):
 	'''
@@ -1397,7 +1484,7 @@ if __name__ == '__main__':
 	group0.add_argument('--evalue', default=50, type=int, help='Lowest exponent allowed as evalue during hit-collection. Default: 50')
 	group0.add_argument('--length', default=1500, type=int, help='Number of bases in front of CDS to be acquired as promoter sequence. Default: 1500')
 	group0.add_argument('-q', '--genomequality', default=1, type=int, help='Quality level for refseq genomes (also in step 6). 0: all, 1: atleast chromosome, 2: representative/reference')
-	# Optional: reconfigure / add extra option to use specific file instead
+	# Optional todo: reconfigure / add extra option to use specific file instead
 	group0.add_argument('--phylopath', default='', help='Specify the filepath for phylogenetics workflow')
 
 	# only step 2 - autosort
@@ -1410,10 +1497,15 @@ if __name__ == '__main__':
 
 	group4.add_argument('-t', '--threshold', type=float, default=0.5, help='Similarity threshold for grouping of clustered MSA. Default: 0.5')
 
-	#only step 6/7
-	group6 = parser.add_argument_group('6/7.', 'Optional arguments applied during step 6 & 7: grouptree, motif.')
+	#step 6+
+	group6 = parser.add_argument_group('6+', 'Optional arguments applied from step 6 on: grouptree, motif, isoforms.')
 
 	group6.add_argument('-sk', '--skipclusters', nargs='+', default=[], help="Don't analyse these groups (ints with index_from_0 or parts of group names)")
+
+	#step 8
+	group8 = parser.add_argument_group('8', 'Optional arguments applied during step 8: isoforms.')
+
+	group8.add_argument('-is', '--isoforms', nargs='+', default=[], help="Names of all knwon/possible isoforms (NCBI gene symbols).")
 
 
 	args = parser.parse_args()
