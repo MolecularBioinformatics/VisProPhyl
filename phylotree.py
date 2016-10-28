@@ -40,7 +40,6 @@ class TreeMaker(object):
 		self.colors_small = ['#e41a1c','#377eb8','#4daf4a','#984ea3','#ff7f00','#ffff33']
 		self.colors_big = ['#a6cee3','#1f78b4','#b2df8a','#33a02c','#fb9a99','#e31a1c','#fdbf6f','#ff7f00','#cab2d6','#6a3d9a','#ffffb3', '#ffea4d', '#b15928', '#000000']
 
-
 		## Data should be read into self.elements (dict)
 
 		## These functions should be called (in order) at the end of the init() of each *child* class
@@ -781,11 +780,23 @@ class Crosshits(TreeMaker):
 # end Crosshits class
 
 
+def greyscale(n):
+	'''
+	Function to make a list of greyscale colors
+	:param n: number of colors wanted
+	:return: list with colors in hex format
+	'''
+	vals = [255./n * i for i in range(n)]
+	#convert to hex & add color for empty (bright red)
+	colors = ['#{0:02x}{0:02x}{0:02x}'.format(int(i)) for i in vals[::-1]] + ['#fb9a99']
+	return colors
+
+
 # ToDo: add better description of file properties - where?
 # supports comments(#), one cluster per line (tax or acc^tax, comma separated), !Clustername in extra line above the actual Cluster
 
 class Clusters(TreeMaker):
-	def __init__(self, filename, dropclusters, **kwargs):
+	def __init__(self, filename, dropclusters, usegrey, **kwargs):
 		TreeMaker.__init__(self, **kwargs)
 
 		self.loadfile = filename
@@ -837,19 +848,23 @@ class Clusters(TreeMaker):
 
 				i = i + 1
 
-		#use different range of colors depeding on number of features
-		if len(self.featurelist) <= 6:
-			self.colors = self.colors_small
-		elif len(self.featurelist) <= 14:
-			self.colors = self.colors_big
+		if usegrey:
+			self.colors = greyscale(len(self.featurelist))
+
 		else:
-			print('Number of features exceeds maximum number of supported colors (14)! Reusing colors.')
-			self.colors = self.colors_big
-			while len(self.colors) < len(self.featurelist):
-				self.colors += self.colors_big
-		#make self.colors as long as the featurelist + grey to support empty
-		self.colors = self.colors[0:len(self.featurelist)]
-		self.colors += [self.emptycolor]
+			#use different range of colors depeding on number of features
+			if len(self.featurelist) <= 6:
+				self.colors = self.colors_small
+			elif len(self.featurelist) <= 14:
+				self.colors = self.colors_big
+			else:
+				print('Number of features exceeds maximum number of supported colors (14)! Reusing colors.')
+				self.colors = self.colors_big
+				while len(self.colors) < len(self.featurelist):
+					self.colors += self.colors_big
+			#make self.colors as long as the featurelist + add empty color
+			self.colors = self.colors[0:len(self.featurelist)]
+			self.colors += [self.emptycolor]
 
 		for f in self.featurelist:
 			if f not in self.featurenames:
@@ -868,7 +883,7 @@ class Clusters(TreeMaker):
 
 	def layout(self, node):
 		try:
-				percents = [round(100.0 * getattr(node, f) / node.total) for f in self.featurelist] + [round(100.0 * node.f_none / node.total)]
+			percents = [round(100.0 * getattr(node, f) / node.total) for f in self.featurelist] + [round(100.0 * node.f_none / node.total)]
 		except ZeroDivisionError:
 			txt = TextFace(' ' + node.plainName, ftype='Arial', fgcolor='#000000')
 		else:
@@ -1022,6 +1037,8 @@ if __name__ == '__main__':
 	# Options only for 'cluster'
 	parser_cl.add_argument('clusters', help='Filename of the .csv file that contains one cluster per line (comma separated TaxID/acc^TaxID).')
 	parser_cl.add_argument('-d', '--dropclusters', nargs='+', type=int, default=[], help='Indices of clusters that should not be included (First index = 0).')
+	parser_cl.add_argument('-g', '--greyscale', action='store_true', help='Use greyscale colors instead of normal ones.')
+
 
 	args = parser.parse_args()
 
@@ -1090,7 +1107,7 @@ if __name__ == '__main__':
 
 	elif args.mode.startswith('cl'):
 
-		extraargs = {'filename': args.clusters, 'dropclusters': args.dropclusters}
+		extraargs = {'filename': args.clusters, 'dropclusters': args.dropclusters, 'usegrey': args.greyscale}
 		useTree = Clusters
 
 	allargs = {**generalargs, **extraargs}

@@ -16,6 +16,7 @@ from PIL import Image
 from taxfinder import TaxFinder
 from phylogenetics import NodeSanitizer
 from phylotree import Clusters
+from collections import defaultdict
 
 VERBOSITY = False
 Entrez.email = 'nicolai.von-kuegelgen@student.uni-tuebingen.de'
@@ -735,11 +736,10 @@ def treeClusters(protein, threshold):
 	for node in t.traverse('postorder'):
 		# Only leaves are named in a newick file!
 		node.add_features(sim=None)
+		node.add_features(cl=None)
 
 		if node.is_leaf():
 			# all node.names are acc^tax
-
-			node.add_features(cl=None)
 			node.add_features(distances = pws[node.name])
 
 		else:
@@ -761,7 +761,8 @@ def treeClusters(protein, threshold):
 
 	# Cluster nodes based on similarity threshold
 	# From bottom up (meaning a cluster will contain all leaves under the point where it was created)
-	# If a node has sim lower than th, put each child-branch in a separate cluster
+	# If a node has sim lower than th, put each child-branch in a separate cluster (initially only save cluster identifiers in node.cl)
+	i = 0
 	clusters = []
 	for node in t.traverse('postorder'):
 		if node.is_leaf():
@@ -769,34 +770,90 @@ def treeClusters(protein, threshold):
 
 		if node.sim < threshold or node.is_root():
 			for x in node.iter_descendants():
-				# checking just for l.cl will/may overwrite the first generated cluster (l.cl = 0)
+				# checking just for `l.cl` will/may overwrite the first generated cluster (l.cl = 0)
 				if any(isinstance(l.cl, int) for l in x.iter_leaves()):
 					continue
 
 				# add a list with all node instances to clusters
 				clusters.append(x.get_leaves())
-				for leaf in clusters[-1]:
-					leaf.cl = len(clusters)-1
+				for leaf in clusters[i]:
+					leaf.cl = i
+				i += 1
 
-	# TODO: only merge if cluster is a node and has a 'direct sister' in the clusters where its supposed to end up
-	# go through clusters, >=2 neighbors have len <= 2, fuse them
-	cleanclusters = []
-	current = []
-	merged = []
-	for cluster in clusters:
-		# Number by variable ??
-		if len(cluster) <= 2:
-			current += cluster
+
+	for node in t.traverse('postorder'):
+		if node.is_leaf():
+			continue
 		else:
-			if current:
-				merged.append(len(cleanclusters)) #-> index of new (ex-)small (merged) cluster
-				cleanclusters.append(current)
-				current = []
-			cleanclusters.append(cluster)
-	# if there's still an open merging cluster left 'close it'
-	if current:
-		merged.append(len(cleanclusters))  # -> index of new (ex-)small (merged) cluster
-		cleanclusters.append(current)
+			# if all leaves have one identical cluster, assign this to the node aswell
+			clnums = [n.cl for n in node.get_leaves()]
+			if clnums.count(clusters[0]) == len(clnums):
+				node.cl = clnums[0]
+
+	# go through clusters, if len <= merge_th  mark cluster-Id as 'tomerge'
+	merge_th = 1
+	tomerge = set(i for i, cl in enumerate(clusters) if len(cl) <= merge_th)
+	clean = set(range(len(clusters))) - tomerge
+
+	# rewrite cl-Ids on 'tomerge' clusters, keeping all 'bad' cl_ids in use in the set
+	# if a (parent) node has only children that can/are to be merged, make one new cluster out of them (recursively)
+
+	for node in t.traverse('postorder'):
+		#Test mode
+		node.add_features(remerged=False)
+
+		# Skip good clusters
+		if node.cl and node.cl not in tomerge:
+			continue
+
+		# Merging mode1, all leaves under current node are to be remerged
+		leaves = node.get_leaves()
+		if all(n.cl in tomerge for n in leaves):
+			for n in leaves:
+				if n.cl in tomerge: #may have been removed in previous
+					tomerge.remove(n.cl)
+				n.cl = i
+				#Test mode
+				n.remerged = True
+			node.cl = i
+			tomerge.add(i) # remerged cluster can be appended further
+			clusters.append(leaves[:])
+			i += 1
+			continue
+
+		# Merging mode2, fuse direct (tomerge) child-leaf with tomerge cluster on other child
+		childs = node.get_children()
+		childleaf = [n for n in childs if n.is_leaf()]
+
+		if len(childleaf) == 1:
+			leaf = childleaf[0]
+			other = childs[not childs.index(leaf)]
+
+			if other.cl is None:
+				check = [n for n in other.get_children() if n.cl in tomerge]
+
+				if len(check) > 1:
+					print('Error Error Error')
+
+				if len(check):
+					leaf.cl = check[0].cl
+					clusters[leaf.cl].append(leaf)
+
+	# TODO: this is buggy, annotation is files is worng, fix it!
+
+	cleanclusters = set()
+	merged = set()
+
+	#TODO: faster would be to do 'iter_leaves' in postorder (if  possible)
+	# its better to add these to clealclusters in order of the tree, because then msa viewer shows them in order (top-down) of the numbers in the group-file
+	for node in t.traverse('postorder'):
+		if not node.is_leaf():
+			continue
+		if node.cl in clean:
+			cleanclusters.add(tuple(clusters[node.cl]))
+		elif node.cl in tomerge:
+			merged.add(len(cleanclusters))
+			cleanclusters.add(tuple(clusters[node.cl]))
 
 	with open(os.path.join(PATH, protein+'_promoters_groups.csv'), 'w') as clout:
 		clout.write('# Clusters for {} determined with similarity threshhold {} on {}.\n'.format(os.path.basename(matrixfile), threshold, strftime('%x')))
@@ -810,25 +867,20 @@ def treeClusters(protein, threshold):
 			clout.write('!Cluster {:02d}{}\n'.format(i, note))
 			clout.write(','.join([n.name for n in cluster]) + '\n')
 
-			#For tests / returning Tree
-			# for leaf in cluster:
-			# 	leaf.cl = i # updating to clean cluster numbers
-			# 	if i in merged:
-			# 		leaf.add_features(remerged=True)
-			# 	else:
-			# 		leaf.add_features(remerged=False)
+	#simple visualisation for tests
+	remFace = TextFace('remerged')
+	def layout(node):
+		if node.is_leaf():
+			faces.add_face_to_node(AttrFace("cl"), node, column=0)
+			if node.remerged:
+				faces.add_face_to_node(remFace, node, column=1)
+		else:
+			faces.add_face_to_node(AttrFace("sim"), node, column=0, position='branch-top')
 
-
-	# #simple visualisation for tests
-	# def layout(node):
-	# 	if node.is_leaf():
-	# 		faces.add_face_to_node(AttrFace("cl"), node, column=0)
-	# 	else:
-	# 		faces.add_face_to_node(AttrFace("sim"), node, column=0)
-	# ts = TreeStyle()
-	# ts.layout_fn = layout
-	# t.show(tree_style=ts)
-	# # test vis end
+	ts = TreeStyle()
+	ts.layout_fn = layout
+	t.show(tree_style=ts)
+	# test vis end
 
 	# for passing to next function (msa viewer) - maybe not needed
 	# return t
