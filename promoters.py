@@ -780,7 +780,6 @@ def treeClusters(protein, threshold):
 					leaf.cl = i
 				i += 1
 
-
 	for node in t.traverse('postorder'):
 		if node.is_leaf():
 			continue
@@ -799,8 +798,8 @@ def treeClusters(protein, threshold):
 	# if a (parent) node has only children that can/are to be merged, make one new cluster out of them (recursively)
 
 	for node in t.traverse('postorder'):
-		#Test mode
-		node.add_features(remerged=False)
+		# #Test mode
+		# node.add_features(remerged=False)
 
 		# Skip good clusters
 		if node.cl and node.cl not in tomerge:
@@ -810,11 +809,12 @@ def treeClusters(protein, threshold):
 		leaves = node.get_leaves()
 		if all(n.cl in tomerge for n in leaves):
 			for n in leaves:
-				if n.cl in tomerge: #may have been removed in previous
+				if n.cl in tomerge: #will be removed in first loop-run
 					tomerge.remove(n.cl)
 				n.cl = i
-				#Test mode
-				n.remerged = True
+				# #Test mode
+				# n.remerged = True
+
 			node.cl = i
 			tomerge.add(i) # remerged cluster can be appended further
 			clusters.append(leaves[:])
@@ -830,30 +830,32 @@ def treeClusters(protein, threshold):
 			other = childs[not childs.index(leaf)]
 
 			if other.cl is None:
+				# one or zero nodes in check: max two (NJ-tree), but if both are tomerge mode 1 triggers
 				check = [n for n in other.get_children() if n.cl in tomerge]
 
-				if len(check) > 1:
-					print('Error Error Error')
+				# if len(check) > 1:
+				# 	print('Error Error Error')
 
 				if len(check):
+					tomerge.remove(leaf.cl)
 					leaf.cl = check[0].cl
 					clusters[leaf.cl].append(leaf)
 
-	# TODO: this is buggy, annotation is files is worng, fix it!
-
-	cleanclusters = set()
+	cleanclusters = []
 	merged = set()
+	used = set()
 
-	#TODO: faster would be to do 'iter_leaves' in postorder (if  possible)
-	# its better to add these to clealclusters in order of the tree, because then msa viewer shows them in order (top-down) of the numbers in the group-file
-	for node in t.traverse('postorder'):
-		if not node.is_leaf():
+	# its better to add these to cleanclusters in order of the tree, because then msa viewer shows them in order (top-down) of the numbers in the group-file
+	for node in t.iter_leaves():
+		if node.cl in used:
 			continue
 		if node.cl in clean:
-			cleanclusters.add(tuple(clusters[node.cl]))
+			cleanclusters.append(tuple(clusters[node.cl]))
+			used.add(node.cl)
 		elif node.cl in tomerge:
 			merged.add(len(cleanclusters))
-			cleanclusters.add(tuple(clusters[node.cl]))
+			cleanclusters.append(tuple(clusters[node.cl]))
+			used.add(node.cl)
 
 	with open(os.path.join(PATH, protein+'_promoters_groups.csv'), 'w') as clout:
 		clout.write('# Clusters for {} determined with similarity threshhold {} on {}.\n'.format(os.path.basename(matrixfile), threshold, strftime('%x')))
@@ -868,22 +870,19 @@ def treeClusters(protein, threshold):
 			clout.write(','.join([n.name for n in cluster]) + '\n')
 
 	#simple visualisation for tests
-	remFace = TextFace('remerged')
-	def layout(node):
-		if node.is_leaf():
-			faces.add_face_to_node(AttrFace("cl"), node, column=0)
-			if node.remerged:
-				faces.add_face_to_node(remFace, node, column=1)
-		else:
-			faces.add_face_to_node(AttrFace("sim"), node, column=0, position='branch-top')
-
-	ts = TreeStyle()
-	ts.layout_fn = layout
-	t.show(tree_style=ts)
+	# remFace = TextFace('remerged')
+	# def layout(node):
+	# 	if node.is_leaf():
+	# 		faces.add_face_to_node(AttrFace("cl"), node, column=0)
+	# 		if node.remerged:
+	# 			faces.add_face_to_node(remFace, node, column=1)
+	# 	else:
+	# 		faces.add_face_to_node(AttrFace("sim"), node, column=0, position='branch-top')
+	#
+	# ts = TreeStyle()
+	# ts.layout_fn = layout
+	# t.show(tree_style=ts)
 	# test vis end
-
-	# for passing to next function (msa viewer) - maybe not needed
-	# return t
 
 
 def msaview(protein):
@@ -1528,6 +1527,7 @@ if __name__ == '__main__':
 	parser.add_argument('-e', '--end', default='', help='Stop after this step, ignored if smaller than start') # [e.g. 7 or hist]
 	parser.add_argument('-dd', '--dontdo', default=[], nargs='+', help='Skip this step')
 	parser.add_argument('-o', '--only', default='', help='Run only the given step, takes precedence over other flags') # [e.g. 4 or unique]
+	#opt TODO: add default/fallback to argument of -p
 	parser.add_argument('-pa', '--path', default='', help='Path Prefix which will be added to all generated files & folders')
 
 	# only step 0 - loading

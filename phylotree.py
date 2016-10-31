@@ -794,9 +794,8 @@ def greyscale(n):
 
 # ToDo: add better description of file properties - where?
 # supports comments(#), one cluster per line (tax or acc^tax, comma separated), !Clustername in extra line above the actual Cluster
-
 class Clusters(TreeMaker):
-	def __init__(self, filename, dropclusters, usegrey, **kwargs):
+	def __init__(self, filename, dropclusters, usegrey=False, **kwargs):
 		TreeMaker.__init__(self, **kwargs)
 
 		self.loadfile = filename
