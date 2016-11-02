@@ -5,7 +5,8 @@ from ete3 import Tree, TreeStyle, faces, AttrFace, TextFace, NodeStyle
 import pandas as pd
 import numpy as np
 from scipy.stats.mstats import gmean
-from time import strftime
+from time import strftime, sleep
+from datetime import datetime
 import subprocess
 from Bio import Entrez, SeqIO, motifs
 from Bio.Alphabet import DNAAlphabet, IUPAC
@@ -45,13 +46,15 @@ def _myGetBasename(name):
 	return os.path.splitext(os.path.basename(name))[0]
 
 
-# ToDo: forced call of this should update all files from scratch / 'reinitialise'
+# ToDo: forced call of this should update all files from scratch / 'reinitialise' (? maybe ?)
 def init():
 	'''
 	Creates some files to start with a new project. Existing files will not be overwritten.
 
 	:creates: infer_NJ_nucleotide_pair.mao
 	:creates: assembly_summary_refseq.txt
+	:creates: promotersConfig.txt
+	:creates: tree_to_prune.txt
 	'''
 	tx = taxids()
 
@@ -65,8 +68,8 @@ def init():
 		with open('promotersConfig.txt', 'w') as out, open(os.path.join(origDir, 'promotersConfig.txt'), 'r') as f:
 			out.write(f.read())
 
-		if not os.path.isfile('tree_tp_prune.txt'):
-			with open('tree_tp_prune.txt', 'w') as out, open(os.path.join(origDir, 'tree_tp_prune.txt'), 'r') as f:
+		if not os.path.isfile('tree_to_prune.txt'):
+			with open('tree_to_prune.txt', 'w') as out, open(os.path.join(origDir, 'tree_to_prune.txt'), 'r') as f:
 				out.write(f.read())
 
 
@@ -190,11 +193,11 @@ def readConfig(defaultargs):
 					setattr(currentargs, key, value)
 
 		except ValueError:
-			print('Error in Config file: Error with flag values (empty value, too many `:`, wrong bool value)')
+			print('Error in Config file: Error with flag values (e.g. empty value, too many `:`, wrong bool value)')
 			sys.exit()
 
 		except KeyError:
-			print('Error in Config file: Unknown flag given')
+			print('Error in Config file: Unknown flag given (or typo)')
 			sys.exit()
 
 		except NameError:
@@ -232,6 +235,7 @@ def _getUniqueAccs(protein, taxid, cutoff=50, phylopath=''):
 	 :param protein: a protein name from the phylogenetics workflow
 	 :param taxid: an instance of the taxids class
 	 :param cutoff: worst evalue (e^-{cutoff} accepted for hits
+	 :param phylopath: filepath to the Phylogenetics workflow directory to be used
 	 :creates: {prortein}_hits.txt
 	 """
 
@@ -302,11 +306,16 @@ def _getUniqueAccs(protein, taxid, cutoff=50, phylopath=''):
 def _loadGenomeFeatures(protein, taxid):
 	"""Download genome annotation tables for all hits of given protein from NCBI ftp-server
 
-	:uses: Promoters/{protein}_hits.tsv
+	:uses: {protein}_hits.tsv
 	:param protein: a protein name from the phylogenetics workflow
 	:param taxid: an instance of the taxids class
 	:creates: featuretables/*.txt
 	"""
+
+	infile = os.path.join(PATH, '{}_hits.tsv').format(protein)
+	if not os.path.isfile(infile):
+		print('Hit definition file ({protein}_hits.tsv) is missing, please rerun from step 0.\nExiting script.')
+		sys.exit()
 
 	if VERBOSITY:
 		print('Downloading Genome annotation tables for hits of {:<10}'.format(protein), end='\r')
@@ -314,15 +323,20 @@ def _loadGenomeFeatures(protein, taxid):
 	accs = set()
 	os.makedirs('featuretables', exist_ok=True)
 
-	with open(os.path.join(PATH, '{}_hits.tsv').format(protein), 'r') as f:
+	with open(infile, 'r') as f:
 		for line in f:
 			acc, tax = line.rstrip().split('\t')
 			accs.add((acc, tax))
 
 	cmd = 'rsync --copy-links -q --times rsync{}_feature_table.txt.gz featuretables/'
 
+	oldfiles = []
 	for acc, tax in accs:
 		if os.path.isfile('featuretables/{}_feature_table.txt'.format(tax)):
+			ftime = datetime.fromtimestamp(os.path.getmtime('featuretables/{}_feature_table.txt'.format(tax)))
+			today = datetime.now()
+			if (today - ftime).days > 7:
+				oldfiles.append(tax)
 			continue
 
 		if VERBOSITY:
@@ -340,20 +354,28 @@ def _loadGenomeFeatures(protein, taxid):
 		if ret:
 			print(ret) #should print errors
 
+	if oldfiles and VERBOSITY:
+		print('Warning: Some of the present featuretables are older than one week, delete old files & rerun for an automatic update.')
+
 
 # Searching through genome annotation files may be faster with reg-ex (probably only when applying regex to whole file)
 def _extractPromoterPos(protein):
 	"""Extract start & strand of Promoter for all (usable) hits a of protein
 	For each write Prot-Acc, TaxID, Genome-Acc, StartPos, Strand, GeneSym, Prot-Name into File
 
-	:uses: hits_{protein}.tsv, featuretables/*.txt
+	:uses: {protein}_hits.tsv, featuretables/*.txt
 	:param protein: a protein name from the phylogenetics workflow
 	:creates: {protein}_hitfeatures.tsv
 	"""
 
+	infile = os.path.join(PATH, '{}_hits.tsv').format(protein)
+	if not os.path.isfile(infile):
+		print('Hit definition file ({protein}_hits.tsv) is missing, please rerun from step 0.\nExiting script.')
+		sys.exit()
+
 	#sort hits by species, so feature tables have to be accessed only once per species
 	tax_accs = dict()
-	with open(os.path.join(PATH, '{}_hits.tsv'.format(protein)), 'r') as f:
+	with open(infile, 'r') as f:
 		for line in f:
 			acc, tax = line.rstrip().split('\t')
 			if tax in tax_accs:
@@ -367,6 +389,7 @@ def _extractPromoterPos(protein):
 			if VERBOSITY:
 				print('Extracting promoter sequences for hits of {}, species: {:<10}'.format(protein, tax), end='\r')
 
+			#all featuretables should be there, unless user manully deletes them while script is running
 			with open('featuretables/{}_feature_table.txt'.format(tax), 'r') as f:
 				for line in f:
 					#safe some time / only look for genes
@@ -390,23 +413,39 @@ def _extractPromoterPos(protein):
 					if len(accs) ==0:
 						break
 				else:
-					#only with verbosity ?
+					#TODO: only with verbosity ?
 					print('Extracting promoter sequences for hits of {}, species: {}, features not found: {}'.format(protein, tax, accs))
 
 
 def _loadPromoterSeq(protein, length=1500):
-	"""Using the information of {protein}_hitfeatures.tsv download the associated promoter sequence from NCBI
+	"""Using the information of {protein}_hitfeatures.tsv download the associated promoter sequence from NCBI, delete are files already present there.
 
 	:uses: {protein}_hitfeatures.tsv
 	:param protein: a protein name from the phylogenetics workflow
 	:param length: The number of NT in front of CDS start to pull
 	:creates: PromoterSeqs_{Protein}/*.fasta, PromoterSeqs_{Protein}/annotation.tsv
 	"""
+	infile = os.path.join(PATH, '{}_hitfeatures.tsv').format(protein)
+	outfolder = os.path.join(PATH, 'PromoterSeqs_{}'.format(protein))
+
+	if not os.path.isfile(infile):
+		print('Hit definition file ({protein}_hitfeatures.tsv) is missing, please rerun from step 0.\nExiting script.')
+		sys.exit()
 
 	entries = set()
-	os.makedirs(os.path.join(PATH, 'PromoterSeqs_{}'.format(protein)), exist_ok=True)
 
-	with open(os.path.join(PATH, '{}_hitfeatures.tsv'.format(protein)), 'r') as f, open(os.path.join(PATH, 'PromoterSeqs_{}/annotation.tsv'.format(protein)), 'w') as annotation:
+	os.makedirs(outfolder, exist_ok=True)
+
+	# Make sure no 'old' sequences are present, that could mix with the new ones
+	fastas = glob(os.path.join(outfolder, '*.fasta'))
+	if fastas:
+		if VERBOSITY:
+			print('Warning: Some sequence files are already present in {}. Deleting all fasta-files there in 5 sec.'.format(outfolder))
+			sleep(5)
+		for file in fastas:
+			os.remove(file)
+
+	with open(infile, 'r') as f, open(os.path.join(outfolder, 'annotation.tsv'), 'w') as annotation:
 		next(f)
 		annotation.write('#Protein-Acc\tTaxID\tGenomic-Acc\tStart-Pos\tEnd-Pos\tstrand\tGene symbol\tGene name\n')
 		for i, line in enumerate(f):
@@ -453,7 +492,7 @@ def _loadPromoterSeq(protein, length=1500):
 			record.id = '{}^{}'.format(lline[0], tax)
 			record.description = ''
 
-			with open(os.path.join(PATH, 'PromoterSeqs_{}/{}.fasta'.format(protein, lline[0])), 'w') as out:
+			with open(os.path.join(outfolder, '{}.fasta'.format(lline[0])), 'w') as out:
 				SeqIO.write(record, out, 'fasta')
 
 			#Complete Information in annotation file
@@ -466,9 +505,10 @@ def getPromoterSeqs(protein, evalue, length, genomequality, phylopath):
 	:param protein: protein name from phylogenetics workflow
 	:param evalue: maximum evalue for collection of hits from workflow
 	:param length: number of bases before CDS start to pull as promoter sequence
+	:param genomequality: arbitrary level of genome quality [0 - 2]
+	:param phylopath: filepath to the Phylogenetics workflow directory to be used
 	:creates: {prortein}_hits.txt, featuretables/*.txt, {protein}_hitfeatures.tsv, PromoterSeqs_{Protein}/*.fasta
 	'''
-
 	# determine/flag if protein is from phylogenetics workflow or somewhere else
 
 	taxid = taxids(genomequality)
@@ -502,10 +542,6 @@ def runClustal(protein):
 		sys.exit()
 
 	cmd = 'clustalo -i - {}-o {} --force'.format(v, pout)
-
-	# shell=True (& strcmd instead of list) required for the pipe to work with subprocess.call
-	# It is however not recommended and probably bad, a different solution would be better
-	# call(cmd, shell=True)
 
 	p1 = subprocess.Popen(['cat']+files, stdout=subprocess.PIPE)
 	p2 = subprocess.Popen(cmd.split(), stdin=p1.stdout)
@@ -570,8 +606,6 @@ def _similarity(seq1, seq2):
 		first = lambda x: min(x.find(i) for i in alphabet if x.find(i)!=-1)
 		last = lambda x: len(x) - first(x[::-1])
 		return score / (max(last(seq1), last(seq2)) - min(first(seq1), first(seq2)))
-
-
 	else:
 		return np.NaN
 
@@ -589,6 +623,9 @@ def autosort(protein, drop):
 	names = []
 	fname = os.path.join(PATH, protein + '_promoters_aligned.fasta')
 
+	if not os.path.isfile(fname):
+		print('MSA fasta file ({protein}_promoters_aligned.fasta) is missing, please rerun step 3.\nExiting script.')
+		sys.exit()
 
 	# this may be faster/easier with using SeqIO as parser
 	with open(fname, 'r') as f:
@@ -599,13 +636,10 @@ def autosort(protein, drop):
 				#first entry is empty
 				if current:
 					seqs.append(current)
-				# #OLD/current fastas: >promoter|{acc}
-				# names.append(line.split('|')[1])
 				# NEW: >{acc}^{tax}
 				names.append(line[1:])
 				current = ''
 				continue
-
 			if line:
 				current += line
 		#last seqence
@@ -641,10 +675,6 @@ def autosort(protein, drop):
 	with open(fname, 'r') as f, open(os.path.join(PATH, protein+'_promoters_kept.fasta'), 'w') as out, open(os.path.join(PATH, protein+'_promoters_dropped.fasta'), 'w') as out2:
 		for line in f:
 			if line.startswith('>'):
-				# # OLD/current fastas: >promoter|{acc}
-				# name = line.rstrip().split('|')[1]
-
-				# NEW: >{acc}^{tax}
 				name = line[1:].rstrip()
 				if name in drop or name.split('^')[0] in drop or str(i) in drop:
 					keeping = False
@@ -666,23 +696,27 @@ def runMegacc(protein):
 	:param protein: protein name from phylogenetics workflow
 	:creates: {protein}_promoters_megacc.nwk
 	'''
+	pin = os.path.join(PATH, '{}_promoters_kept.fasta'.format(protein))
+	pout = os.path.join(PATH, '{}_promoters_megacc.txt'.format(protein))
+	treefn = pout.replace('.txt', '.nwk')
 
 	if not os.path.isfile('infer_NJ_nucleotide_pair.mao'):
 		print('MegaCC config file is missing, please rerun initialisation.\nExiting script.')
 		sys.exit()
+	if not os.path.isfile(pin):
+		print('Sorted MSA ({protein}_promoters_kept.fasta) is missing, please rerun step 4.\nExiting script.')
+		sys.exit()
+
+
+	# Megacc does NOT overwrite its own results, do it manually
+	if os.path.isfile(treefn):
+		os.remove(treefn)
 
 	# only with 2nd level verbosity ??
 	v = '-s '
 	if VERBOSITY:
 		v = ''
 
-	pin = os.path.join(PATH, '{}_promoters_kept.fasta'.format(protein))
-	pout = os.path.join(PATH, '{}_promoters_megacc.txt'.format(protein))
-	treefn = pout.replace('.txt', '.nwk')
-
-	# Megacc does NOT overwrite its own results, do it manually
-	if os.path.isfile(treefn):
-		os.remove(treefn)
 
 	cmd = 'megacc -n {}-a infer_NJ_nucleotide_pair.mao -d {} -o {}'.format(v, pin, pout)
 	subprocess.call(cmd.split())
@@ -699,11 +733,10 @@ def runMegacc(protein):
 		out.write(filestr)
 
 
-# optional/possible: return Tree object (for msa viewer ?)
 #(opt.?) ToDo: addition of removed files as extra cluster group (+ [recursive?] grouping of dropped files)
 def treeClusters(protein, threshold):
 	'''
-	Use pw-similarity to divide a clustered MSA in different groups
+	Use pw-similarity to divide a clustered MSA in different groups. Groups with only one enrty that are also adjacent in the newick tree will be remerged.
 
 	:uses: {protein}_promoter_matrix.tsv, {protein}_promoters_megacc.nwk
 	:param protein: protein name from phylogenetics workflow
@@ -728,9 +761,6 @@ def treeClusters(protein, threshold):
 	t = Tree(treefile)
 
 	# matrix conatins also the dropped elements, even though probably/not yet needed
-	# if VERBOSITY:
-	# 	print()
-
 	pws = pd.read_csv(matrixfile, sep='\t', header=1, index_col=0, na_values='-')
 
 	for node in t.traverse('postorder'):
@@ -833,9 +863,6 @@ def treeClusters(protein, threshold):
 				# one or zero nodes in check: max two (NJ-tree), but if both are tomerge mode 1 triggers
 				check = [n for n in other.get_children() if n.cl in tomerge]
 
-				# if len(check) > 1:
-				# 	print('Error Error Error')
-
 				if len(check):
 					tomerge.remove(leaf.cl)
 					leaf.cl = check[0].cl
@@ -886,7 +913,6 @@ def treeClusters(protein, threshold):
 
 
 def msaview(protein):
-
 	'''
 	Visualise the MSA & the groups of the megaCC clustering.
 	Adapted from msa_viewer.py
@@ -983,7 +1009,10 @@ def msaview(protein):
 
 def _makeTree(quality_level=1):
 	'''
-	Create Newick tree with all species represented in refseq_genomes, based on level of genome quality
+	Create Newick tree with all species represented in refseq_genomes, based on level of genome quality.
+
+	:param quality_level: arbitrary level of genome quality [0 - 2]
+	:creates: refseq_tree_l{qlevel}.tre
 	'''
 
 	if not os.path.isfile('refseq_taxids_l{}.txt'.format(quality_level)):
@@ -1041,16 +1070,18 @@ def _makeTree(quality_level=1):
 
 def grouptree(protein, skipclusters, genomequality):
 	'''
-	wrapper to call phylotree.py and plot cluster distribution on tree
+	Wrapper to use phylotree.py and plot cluster distribution on tree
 
-	:param protein:
-	:param skipclusters:
+	:uses: {protein}_promoters_groups.csv
+	:param protein: protein name from phylogenetics workflow
+	:param genomequality: arbitrary level of genome quality [0 - 2]
+	:param skipclusters: List (or similar) with clusters to skip (numbers or names, both as strings)
+	:creates: {protein}_promoters_grouptree.pdf
 	'''
 
 	groupfn = os.path.join(PATH, protein + '_promoters_groups.csv')
 	outfn = os.path.join(PATH, protein + '_promoters_grouptree.pdf')
 	treefn = 'refseq_tree_l{}.tre'.format(genomequality)
-
 
 	if not os.path.isfile(groupfn):
 		print('Grouping file not found. Run step 4 for this file to be created.')
@@ -1060,7 +1091,6 @@ def grouptree(protein, skipclusters, genomequality):
 		_makeTree(genomequality)
 
 	prunefn = 'tree_to_prune.txt'
-
 
 	drop = set(int(i) for i in skipclusters if i.isdecimal())
 	if len(drop) != len(skipclusters):
@@ -1081,17 +1111,18 @@ def grouptree(protein, skipclusters, genomequality):
 
 	t = Tree(treefn, format=8)
 	# tree, treefile, prune, sqrt = False, collapse = True, show_empty_species = True, startnode = None, countTotal = False
-	TM = Clusters(tree=t, treefile=treefn, prune=prunefn, filename=groupfn, dropclusters=drop, show_empty_species=False)
+	TM = Clusters(tree=t, treefile=treefn, prune=prunefn, filename=groupfn, dropclusters=drop, show_empty_species=False, usegrey=False)
 	TM.renderTree(outfn, 1000, 90)
 
 
 def motifAnalysis(protein, skipclusters):
-	'''Generate motifs of each group within the MSA
+	'''Generate motifs of each group within the MSA. This function will split the alignment of each given group in the msa into highly conserved parts, thene generate motifs (& seqlogo) for these split groups.
 
 	:uses: {protein}_promoters_groups.csv, {protein}_promoters_aligend.fasta
 	:param protein: protein name from phylogenetics workflow
-	:creates: motifs/*
-	'''
+	:param skipclusters: List (or similar) with clusters to skip (numbers or names, both as strings)
+	:creates: motifs/{protein}_{name}_motifconsensus.txt, motifs/{protein}_{name}_motifs.jas, motifs/{protein}_{name}_seqlogo.png
+ 	'''
 
 	fastafn = os.path.join(PATH, protein + '_promoters_aligned.fasta')
 	groupfn = os.path.join(PATH, protein + '_promoters_groups.csv')
@@ -1166,7 +1197,6 @@ def motifAnalysis(protein, skipclusters):
 
 	for name, gr in groups.items():
 		# split group into sections with high similarity
-
 		name = name.replace(' ', '')
 
 		# First remove ('conserved') gaps from the group - they are irrelevant & make problems
@@ -1205,7 +1235,6 @@ def motifAnalysis(protein, skipclusters):
 				motifpos.append([start, i - 1 + winlen])
 				start = None
 
-
 		# A lot of the position pairs overlap
 		# go through them and fuse as necessary
 		abs_overlap = 3
@@ -1241,12 +1270,15 @@ def motifAnalysis(protein, skipclusters):
 	motiffolder = 'motifs'
 	# results with different parameters may yield less files, therefore all old files should be removed
 	if os.path.isdir(os.path.join(PATH, motiffolder)):
+		if VERBOSITY:
+			print('Warning: previously determined motifs of {} will be deleted in 5sec to prevent mixing of old & new results!'.format(protein))
+			sleep(5)
 		subprocess.call(['rm', '-r', os.path.join(PATH, motiffolder)])
 
 	os.makedirs(os.path.join(PATH, motiffolder))
 
 	for name, motif in motifdict.items():
-		#the heigth (bit value) in logos doesnt seem quite correct currently
+		#TODO: the heigth (bit value) in logos doesnt seem quite correct currently
 		motif.weblogo(os.path.join(PATH, motiffolder, '{}_{}_seqlogo.png'.format(protein, name)))
 
 	for name, gr in groups.items():
@@ -1282,14 +1314,22 @@ def clusterisoforms(protein, skipclusters, isoforms, guess=False):
 	'''
 	Determine the protein isoform composition of all groups.
 
-	:param protein:
-	:param skipclusters:
-	:param isoforms: list with all knwon/possible isoforms (gene symbols)
+	:uses: {protein}_promoters_groups.csv, PromoterSeqs_{protein}/annotation.tsv, {protein}_promoters_megacc.nwk
+	:param protein: protein name from phylogenetics workflow
+	:param skipclusters: List (or similar) with clusters to skip (numbers or names, both as strings)
+	:param isoforms: list with all knwon/possible isoforms (gene symbols), at least one must be given
 	:param guess: Try to guess isoform if gene symbol doesn't match [not yet implemented]
+	:creates: {protein}_promoters_grouptree.pdf
 	'''
 	annotationfn = os.path.join(PATH, 'PromoterSeqs_{}'.format(protein), 'annotation.tsv')
 	groupfn = os.path.join(PATH, protein + '_promoters_groups.csv')
 	outfn = os.path.join(PATH, protein + '_promoters_isoforms.txt')
+	treefile = os.path.join(PATH, protein + '_promoters_megacc.nwk')
+	outfn2 = os.path.join(PATH, protein + '_promoters_isoformstree.pdf')
+
+	if not os.path.isfile(treefile):
+		print('Newick-tree file not found. Run step 3 for this file to be created.')
+		sys.exit()
 
 	if not os.path.isfile(groupfn):
 		print('Grouping file not found. Run step 4 for this file to be created.')
@@ -1382,13 +1422,6 @@ def clusterisoforms(protein, skipclusters, isoforms, guess=False):
 
 	## Tree visulisation ##
 
-	treefile = os.path.join(PATH, protein + '_promoters_megacc.nwk')
-	outfn2 = os.path.join(PATH, protein + '_promoters_isoformstree.pdf')
-
-	if not os.path.isfile(treefile):
-		print('Newick-tree file not found. Run step 3 for this file to be created.')
-		sys.exit()
-
 	t = Tree(treefile)
 
 	# for each group add NodeStyle to a dict to color lines according to group
@@ -1421,8 +1454,6 @@ def clusterisoforms(protein, skipclusters, isoforms, guess=False):
 		if node.cl is not None:
 			node.set_style(styles[node.cl])
 
-
-	#simple visualisation for tests
 	def layout(node):
 		if node.is_leaf():
 			faces.add_face_to_node(AttrFace("iso"), node, column=0, position="branch-right")
@@ -1433,7 +1464,6 @@ def clusterisoforms(protein, skipclusters, isoforms, guess=False):
 	ts = TreeStyle()
 	ts.layout_fn = layout
 	ts.show_leaf_name = False
-	#t.show(tree_style=ts)
 	t.render(outfn2, tree_style=ts, w=1000)
 
 
@@ -1527,8 +1557,7 @@ if __name__ == '__main__':
 	parser.add_argument('-e', '--end', default='', help='Stop after this step, ignored if smaller than start') # [e.g. 7 or hist]
 	parser.add_argument('-dd', '--dontdo', default=[], nargs='+', help='Skip this step')
 	parser.add_argument('-o', '--only', default='', help='Run only the given step, takes precedence over other flags') # [e.g. 4 or unique]
-	#opt TODO: add default/fallback to argument of -p
-	parser.add_argument('-pa', '--path', default='', help='Path Prefix which will be added to all generated files & folders')
+	parser.add_argument('-pa', '--path', nargs='?', default='', const=None, help='Path Prefix which will be added to all generated files & folders. Without value falls back to the value of protein ')
 
 	# only step 0 - loading
 	group0 = parser.add_argument_group('0.', 'Optional arguments applied during step 0: loading.')
@@ -1578,7 +1607,10 @@ if __name__ == '__main__':
 		readConfig(args)
 		sys.exit()
 
-	PATH = args.path
+	if not args.config and args.path is None:
+		PATH = args.protein
+	else:
+		PATH = args.path
 	VERBOSITY = args.verbose
 
 	if PATH:
