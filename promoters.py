@@ -159,7 +159,8 @@ def readConfig(defaultargs):
 
 	vartransform = {'verbose': checkbool, 'startfrom': lambda x: x, 'only': lambda x: x, 'end': lambda x: x, 'path': lambda x: x,
 					'evalue': int, 'genomequality': int, 'phylopath': lambda x: x, 'length': int, 'dontdo': lambda x: x.split(),
-					'drop': lambda x: x.split(), 'threshold': float, 'skipclusters': lambda x: x.split(), 'isoforms': lambda x: x.split()}
+					'drop': lambda x: x.split(), 'threshold': float, 'skipclusters': lambda x: x.split(), 'isoforms': lambda x: x.split(),
+					'categories': lambda x: x.split()}
 
 	runargs = []
 	current = None
@@ -912,13 +913,14 @@ def treeClusters(protein, threshold):
 	# test vis end
 
 
-def msaview(protein):
+def msaview(protein, categories=False):
 	'''
 	Visualise the MSA & the groups of the megaCC clustering.
 	Adapted from msa_viewer.py
 
 	:uses: {protein}_promoters_groups.csv, {protein}_promoters_kept.fasta
 	:param protein: protein name from phylogenetics workflow
+	:param categories: ignored if falsy, otherwise filename or list with (mother) taxids to specify categories
 	:creates: {protein}_grouped_msa.png
 	'''
 
@@ -932,6 +934,26 @@ def msaview(protein):
 	if not os.path.isfile(groupfn):
 		print('Grouping file not found. Run step 4 for this file to be created.')
 		sys.exit()
+
+	catgoryfile = ''
+	if not categories:
+		pass
+	elif len(categories) == 1 and os.path.isfile(categories[0]):
+		catgoryfile = categories[0]
+	elif len(categories) == 1 and os.path.isfile(os.path.join(PATH, categories[0])):
+		catgoryfile = categories[0]
+	elif len(categories) == 1 and isinstance(categories[0], str):
+		print('Expected a file for Categories, but the file location was not valid (or not an actual file location). Ignoring categories')
+		categories = False
+	else:
+		try:
+			categories = tuple(map(int, categories))
+			TF = TaxFinder()
+			if not all(TF.getTaxInfo(tax)['name'] != 'unclassified' for tax in categories):
+				raise ValueError
+		except ValueError:
+			print('Categories must either be a valid filename or list of valid taxids. Ignoring categories')
+			categories = False
 
 	dnacolors = {
 		'A': (203, 0, 0),
@@ -987,19 +1009,71 @@ def msaview(protein):
 
 			current += 1
 
+	category = {taxacc: (255,255,255) for taxacc in order}
+	basecolors = [(255,0,0), (0,255,0), (0,0,255), (255,255,0), (0,255,255)]
+
+	if catgoryfile:
+		# Predefined categories
+		# Use same filesyntax as groupfile, except color can be definded in `! ....` lines as rgb tuple
+		# TODO: make an example file & include in init
+		with open(catgoryfile, 'r') as f:
+			current = 0
+			color = False
+			for line in f:
+				line = line.split('#')[0].rstrip()
+				if not line:
+					continue
+
+				if line.startswith('!'):
+					cstringl = re.findall('\( *[0-9]{1,3}, *[0-9]{1,3}, *[0-9]{1,3} *\)', line)
+					if len(cstringl):
+						color = eval(cstringl[0])
+					continue
+
+				accessions = line.split(',')
+
+				for elem in accessions:
+					c = color or basecolors[current % len(basecolors)]
+					if '^' in elem: #assume 'acc^tax'
+						category[elem] = c
+					elif elem.isdigit(): #assume taxid
+						for acctax in order:
+							if elem == acctax.split('^')[1]:
+								category[acctax] = c
+
+				current += bool(color)
+				color = False
+
+	elif categories:
+		# Determine category based on lineage (categories should be a list with 'mother' tax-ids)
+		taxagroups = {taxid: basecolors[i % len(basecolors)] for i, taxid in enumerate(categories)}
+
+		for seq in order:
+			acc, tax = seq.split('^')
+			lin = TF.getLineage(int(tax), display='taxid')
+			for taxa, color in taxagroups.items():
+				if str(taxa) in lin:
+					category[seq] = color
+
+
+
 	height = len(order)
 	width = len(next(iter(data.values())))
-	borders = 10
+	borders = 5
 
-	im = Image.new('RGB', (width + 2 * borders, height), (255, 255, 255))
+	im = Image.new('RGB', (width + (bool(categories) * 2 + 2) * borders, height), (255, 255, 255))
 
 	for y, elem in enumerate(order):
 		for x in range(borders):
-			im.putpixel((x, y), groupcolors[elem])
-			im.putpixel((x + width + borders, y), groupcolors[elem])
+			if categories:
+				im.putpixel((x, y), category[elem])
+				im.putpixel((x + width + 3 * borders, y), category[elem])
+
+			im.putpixel((x + bool(categories) * borders, y), groupcolors[elem])
+			im.putpixel((x + width + (bool(categories)+1) * borders, y), groupcolors[elem])
 		try:
 			for x, value in enumerate(data[elem]):
-				im.putpixel((x + borders, y), value)
+				im.putpixel((x + (bool(categories)+1) * borders, y), value)
 		except KeyError:
 			print(elem, alignmentFile)
 			raise
@@ -1475,7 +1549,7 @@ tasks = {'acquire': ('find and download promoter sequences', getPromoterSeqs, ['
 		 'autosort': ('similarity sort MSA for clustering', autosort, ['drop']),
 		 'megacc': ('run MSA clustering with Megacc', runMegacc, []),
 		 'grouping': ('find groups in clustered MSA', treeClusters, ['threshold']),
-		 'msaview': ('Make plot of the MSA including the groups', msaview, []),
+		 'msaview': ('Make plot of the MSA including the groups', msaview, ['categories']),
 		 'grouptree': ('Show distributions of the cluster over a tree.', grouptree, ['skipclusters', 'genomequality']),
 		 'motifs': ('analyse MSA cluster groups for motifs', motifAnalysis, ['skipclusters']),
 		 'isoforms': ('Determine isoform distribution of clusters', clusterisoforms, ['skipclusters', 'isoforms'])}
@@ -1577,6 +1651,11 @@ if __name__ == '__main__':
 	group4 = parser.add_argument_group('4.', 'Optional arguments applied during step 4: grouping.')
 
 	group4.add_argument('-t', '--threshold', type=float, default=0.5, help='Similarity threshold for grouping of clustered MSA. Default: 0.5')
+
+	#only step 5 - msaview
+	group5 = parser.add_argument_group('5.', 'Optional arguments applied during step 5: msaview.')
+
+	group5.add_argument('-cat', '--categories', nargs='+', default=False, help='Either a file specifing a categories for certain entires, or a list of mother species to build categories of.')
 
 	#step 6+
 	group6 = parser.add_argument_group('6+', 'Optional arguments applied from step 6 on: grouptree, motif, isoforms.')
