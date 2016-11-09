@@ -304,7 +304,7 @@ def _getUniqueAccs(protein, taxid, cutoff=50, phylopath=''):
 			out.write(acc+'\t'+mapping[acc]+'\n')
 
 
-def _loadGenomeFeatures(protein, taxid):
+def _loadGenomeFeatures(protein, taxid, source='pblast'):
 	"""Download genome annotation tables for all hits of given protein from NCBI ftp-server
 
 	:uses: {protein}_hits.tsv
@@ -313,26 +313,37 @@ def _loadGenomeFeatures(protein, taxid):
 	:creates: featuretables/*.txt
 	"""
 
-	infile = os.path.join(PATH, '{}_hits.tsv').format(protein)
+	if source == 'pblast':
+		infile = os.path.join(PATH, '{}_hits.tsv').format(protein)
+	elif source == 'tblastn' or source == 'tblast':
+		infile = os.path.join(PATH, '{}_genomehits.tsv').format(protein)
+	else:
+		print('Unknown Value for source: {}, allowed are: pblast, tblast, tblastn.\nExiting script.'.format(source))
+		sys.exit()
+
 	if not os.path.isfile(infile):
-		print('Hit definition file ({protein}_hits.tsv) is missing, please rerun from step 0.\nExiting script.')
+		print('Hit definition file ({}) is missing, please rerun from step 0.\nExiting script.'.format(os.path.basename(infile)))
 		sys.exit()
 
 	if VERBOSITY:
 		print('Downloading Genome annotation tables for hits of {:<10}'.format(protein), end='\r')
 
-	accs = set()
+	species = set()
 	os.makedirs('featuretables', exist_ok=True)
 
 	with open(infile, 'r') as f:
 		for line in f:
-			acc, tax = line.rstrip().split('\t')
-			accs.add((acc, tax))
+			lline = line.rstrip().split('\t')
+			if source == 'pblast':
+				tax = lline[1]
+			else:
+				raise NotImplementedError
+			species.add(tax)
 
 	cmd = 'rsync --copy-links -q --times rsync{}_feature_table.txt.gz featuretables/'
 
 	oldfiles = []
-	for acc, tax in accs:
+	for tax in species:
 		if os.path.isfile('featuretables/{}_feature_table.txt'.format(tax)):
 			ftime = datetime.fromtimestamp(os.path.getmtime('featuretables/{}_feature_table.txt'.format(tax)))
 			today = datetime.now()
@@ -344,7 +355,7 @@ def _loadGenomeFeatures(protein, taxid):
 			print('Downloading Genome annotation table for species: {:<10}'.format(tax), end='\r')
 
 		ftp = taxid.map[tax][1]
-		fn = ftp.split('/')[-1]
+		fn = ftp.split('/')[-1] #or os.path.basename ?
 
 		ret = subprocess.call(cmd.format(ftp[3:]+'/'+fn).split()) #downlaod from ncbi
 		p = 'featuretables/{}_feature_table.txt.gz'.format(fn)
@@ -356,11 +367,11 @@ def _loadGenomeFeatures(protein, taxid):
 			print(ret) #should print errors
 
 	if oldfiles and VERBOSITY:
-		print('Warning: Some of the present featuretables are older than one week, delete old files & rerun for an automatic update.')
+		print('Warning: Some of the present featuretables are older than one week, delete old files & rerun step 0 for an automatic update.')
 
 
 # Searching through genome annotation files may be faster with reg-ex (probably only when applying regex to whole file)
-def _extractPromoterPos(protein):
+def _extractPromoterPos(protein, source='pblast'):
 	"""Extract start & strand of Promoter for all (usable) hits a of protein
 	For each write Prot-Acc, TaxID, Genome-Acc, StartPos, Strand, GeneSym, Prot-Name into File
 
@@ -368,21 +379,31 @@ def _extractPromoterPos(protein):
 	:param protein: a protein name from the phylogenetics workflow
 	:creates: {protein}_hitfeatures.tsv
 	"""
+	if source == 'pblast':
+		infile = os.path.join(PATH, '{}_hits.tsv').format(protein)
+	elif source == 'tblastn' or source == 'tblast':
+		infile = os.path.join(PATH, '{}_genomehits.tsv').format(protein)
+	else:
+		print('Unknown Value for source: {}, allowed are: pblast, tblast, tblastn.\nExiting script.'.format(source))
+		sys.exit()
 
-	infile = os.path.join(PATH, '{}_hits.tsv').format(protein)
 	if not os.path.isfile(infile):
-		print('Hit definition file ({protein}_hits.tsv) is missing, please rerun from step 0.\nExiting script.')
+		print('Hit definition file ({}) is missing, please rerun from step 0.\nExiting script.'.format(os.path.basename(infile)))
 		sys.exit()
 
 	#sort hits by species, so feature tables have to be accessed only once per species
-	tax_accs = dict()
+	tax_accs = defaultdict(list)
 	with open(infile, 'r') as f:
 		for line in f:
-			acc, tax = line.rstrip().split('\t')
-			if tax in tax_accs:
-				tax_accs[tax] += [acc]
+			lline = line.rstrip().split('\t')
+			if source == 'pblast':
+				acc, tax = lline
+				tax_accs[tax].append(acc)
 			else:
-				tax_accs[tax] = [acc]
+				# expect ONE protein per species, can deal with more, need to store tuples in list instead of just one acc each
+				# load genome-acc, mRNA-acc, (& protein acc?) for each species
+				raise NotImplementedError
+				#tax_accs[tax].append( (genonem-acc, mRNAacc, proteinacc) )
 
 	with open(os.path.join(PATH, '{}_hitfeatures.tsv'.format(protein)), 'w') as out:
 		out.write('#Prot-Acc\tTaxID\tGenome-Acc\tStartPos\tEndPos\tStrand\tGeneSym\tProt-Name\n')
@@ -393,8 +414,9 @@ def _extractPromoterPos(protein):
 			#all featuretables should be there, unless user manully deletes them while script is running
 			with open('featuretables/{}_feature_table.txt'.format(tax), 'r') as f:
 				for line in f:
-					#safe some time / only look for genes
-					if not line.startswith('CDS'):
+					#safe some time / only look for mRNA (which is right after the promoter, gene mostly aswell [even though thats not quite correct])
+					#TODO: mRNA
+					if not line.startswith('mRNA'):
 						continue
 
 					#without splitting first might also find 'related_accession', maybe not though after sorting for CDS
@@ -402,11 +424,20 @@ def _extractPromoterPos(protein):
 	#Columns in *_feature_table.txt
 	#feature0	class1	assembly2	assembly_unit3	seq_type4	chromosome5	genomic_accession6	start7	end8	strand9
 	#product_accession10	non-redundant_refseq11	related_accession12	name13	symbol14	GeneID15	locus_tag16 feature_interval_length17	product_length18	attributes19
+					if source == 'pblast':
+						if lline[10] not in accs:
+							continue
+						accs.remove(lline[10])
+					else:
+						# check: genome-acc - lline[6], product(mRNA)acc - lline[10], related(protein)acc - lline[12]
+						# if all match, break & check off that hit
+						for acc in accs[:]:
+							if (lline[6], lline[10], lline[12]) == acc:
+								accs.remove(acc)
+								break
+						else:
+							continue
 
-					if lline[10] not in accs:
-						continue
-
-					accs.remove(lline[10])
 
 					outl = [lline[10], tax, lline[6], lline[7], lline[8], lline[9], lline[14], lline[13]]
 					out.write('\t'.join(outl)+'\n')
@@ -415,6 +446,7 @@ def _extractPromoterPos(protein):
 						break
 				else:
 					#TODO: only with verbosity ?
+					# This should NEVER happen with tblastn: give warning (probably featuretable & refseq for tblast are not the same status/update), maybe sysexit ?
 					print('Extracting promoter sequences for hits of {}, species: {}, features not found: {}'.format(protein, tax, accs))
 
 
@@ -480,7 +512,6 @@ def _loadPromoterSeq(protein, length=1500):
 				end = int(end) + length
 				strand = 2
 
-
 			handle = Entrez.efetch(db="nucleotide",
 								   id=genome_acc,
 								   rettype="fasta",
@@ -513,11 +544,11 @@ def getPromoterSeqs(protein, evalue, length, genomequality, phylopath):
 	# determine/flag if protein is from phylogenetics workflow or somewhere else
 
 	taxid = taxids(genomequality)
-	#if phylogenetics
+	#if source == 'pblast':
 	_getUniqueAccs(protein, taxid, evalue, phylopath)
-	#else: new parser for tsv or similar
-	_loadGenomeFeatures(protein, taxid)
-	_extractPromoterPos(protein)
+	#else: NotImplemented
+	_loadGenomeFeatures(protein, taxid) #source!
+	_extractPromoterPos(protein)	#source!
 	_loadPromoterSeq(protein, length)
 
 
