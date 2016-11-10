@@ -414,20 +414,18 @@ def _extractPromoterPos(protein, source='pblast'):
 			#all featuretables should be there, unless user manully deletes them while script is running
 			with open('featuretables/{}_feature_table.txt'.format(tax), 'r') as f:
 				for line in f:
-					#safe some time / only look for mRNA (which is right after the promoter, gene mostly aswell [even though thats not quite correct])
-					#TODO: mRNA
+					#safe some time / only look for mRNA (which should start right after the promoter, gene apparently does aswell [even though thats not quite correct])
 					if not line.startswith('mRNA'):
 						continue
 
-					#without splitting first might also find 'related_accession', maybe not though after sorting for CDS
 					lline = line.rstrip().split('\t')
 	#Columns in *_feature_table.txt
 	#feature0	class1	assembly2	assembly_unit3	seq_type4	chromosome5	genomic_accession6	start7	end8	strand9
 	#product_accession10	non-redundant_refseq11	related_accession12	name13	symbol14	GeneID15	locus_tag16 feature_interval_length17	product_length18	attributes19
 					if source == 'pblast':
-						if lline[10] not in accs:
+						if lline[12] not in accs: #for mRNA the protein is the related_acc
 							continue
-						accs.remove(lline[10])
+						accs.remove(lline[12])
 					else:
 						# check: genome-acc - lline[6], product(mRNA)acc - lline[10], related(protein)acc - lline[12]
 						# if all match, break & check off that hit
