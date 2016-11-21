@@ -518,7 +518,7 @@ def makeNewick():
 			tree = {}
 
 			for line in lineages:
-				if line[0] not in tree:
+				if line and line[0] not in tree:
 					tree[line[0]] = set()
 
 				for i in range(1, len(line)):
