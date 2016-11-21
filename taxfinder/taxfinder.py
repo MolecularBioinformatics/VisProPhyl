@@ -173,30 +173,36 @@ class TaxFinder():
 		'''
 
 		taxid = int(taxid)
+		orig_taxid = taxid
 
 		if taxid in self.lineageCache:
 			return self.lineageCache[taxid]
 
 		lineage = []
 
-		while True:
+		while taxid != 1:
 			try:
 				t = self.taxdb[taxid]
 			except KeyError:
-				self.lineageCache[taxid] = tuple()
+				self.lineageCache[orig_taxid] = tuple()
 				return tuple()
 			if display == 'taxid':
-				s = taxid
+				s = str(taxid)
 			elif display == 'name':
 				s = t['name']
 			else:
 				s = t['name'] + '^' + str(taxid)
-			lineage.append(str(s))
-			if taxid == 1:
-				break
+			lineage.append(s)
 			taxid = t['parent']
 
-		self.lineageCache[taxid] = tuple(lineage[::-1])
+		if display == 'taxid':
+			lineage.append('1')
+		elif display == 'name':
+			lineage.append('root')
+		else:
+			lineage.append('root^1')
+
+		self.lineageCache[orig_taxid] = tuple(lineage[::-1])
 
 		return self.lineageCache[taxid]
 
@@ -208,6 +214,8 @@ class TaxFinder():
 		If the taxid could not be found, an empty tuple will be returned.
 		'''
 
+		orig_taxid = taxid
+
 		if taxid in self.lineageCache:
 			return self.lineageCache[taxid]
 
@@ -217,7 +225,7 @@ class TaxFinder():
 			try:
 				t = self.taxdb[taxid]
 			except KeyError:
-				self.lineageCache[taxid] = tuple()
+				self.lineageCache[orig_taxid] = tuple()
 				return tuple()
 			lineage.append(taxid)
 			taxid = t['parent']
@@ -226,6 +234,6 @@ class TaxFinder():
 
 		lin = tuple(lineage[::-1])
 
-		self.lineageCache[taxid] = lin
+		self.lineageCache[orig_taxid] = lin
 
 		return lin
