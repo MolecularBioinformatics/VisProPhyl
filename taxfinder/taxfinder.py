@@ -20,6 +20,7 @@ class TaxFinder():
 				self.taxdb[int(l[0])] = {'level': int(l[1]), 'parent': int(l[2]), 'rank': l[3], 'name': l[4].rstrip()}
 
 		self.lineageCache = {}
+		self.fastLineageCache = {}
 		self.taxidCache = {}
 
 
@@ -202,9 +203,11 @@ class TaxFinder():
 		else:
 			lineage.append('root^1')
 
-		self.lineageCache[orig_taxid] = tuple(lineage[::-1])
+		lin = tuple(lineage[::-1])
 
-		return self.lineageCache[taxid]
+		self.lineageCache[orig_taxid] = lin
+
+		return lin
 
 
 	def getLineageFast(self, taxid):
@@ -216,8 +219,8 @@ class TaxFinder():
 
 		orig_taxid = taxid
 
-		if taxid in self.lineageCache:
-			return self.lineageCache[taxid]
+		if taxid in self.fastLineageCache:
+			return self.fastLineageCache[taxid]
 
 		lineage = []
 
@@ -225,7 +228,7 @@ class TaxFinder():
 			try:
 				t = self.taxdb[taxid]
 			except KeyError:
-				self.lineageCache[orig_taxid] = tuple()
+				self.fastLineageCache[orig_taxid] = tuple()
 				return tuple()
 			lineage.append(taxid)
 			taxid = t['parent']
@@ -234,6 +237,6 @@ class TaxFinder():
 
 		lin = tuple(lineage[::-1])
 
-		self.lineageCache[orig_taxid] = lin
+		self.fastLineageCache[orig_taxid] = lin
 
 		return lin
