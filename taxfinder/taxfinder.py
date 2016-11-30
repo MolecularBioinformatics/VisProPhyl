@@ -173,12 +173,21 @@ class TaxFinder():
 		If the taxid could not be found, an empty tuple will be returned.
 		'''
 
+		def reformat(lineage, display):
+			if display == 'taxid':
+				return tuple(l[0] for l in lineage)
+			elif display == 'name':
+				return tuple(l[1] for l in lineage)
+			else:
+				return tuple(l[1]+'^'+l[0] for l in lineage)
+
+
 		taxid = int(taxid)
-		orig_taxid = taxid
 
 		if taxid in self.lineageCache:
-			return self.lineageCache[taxid]
+			return reformat(self.lineageCache[taxid], display)
 
+		orig_taxid = taxid
 		lineage = []
 
 		while taxid != 1:
@@ -187,27 +196,16 @@ class TaxFinder():
 			except KeyError:
 				self.lineageCache[orig_taxid] = tuple()
 				return tuple()
-			if display == 'taxid':
-				s = str(taxid)
-			elif display == 'name':
-				s = t['name']
-			else:
-				s = t['name'] + '^' + str(taxid)
-			lineage.append(s)
+			lineage.append((str(taxid), t['name']))
 			taxid = t['parent']
 
-		if display == 'taxid':
-			lineage.append('1')
-		elif display == 'name':
-			lineage.append('root')
-		else:
-			lineage.append('root^1')
+		lineage.append(('1', 'root'))
 
 		lin = tuple(lineage[::-1])
 
 		self.lineageCache[orig_taxid] = lin
 
-		return lin
+		return reformat(lin, display)
 
 
 	def getLineageFast(self, taxid):
