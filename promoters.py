@@ -958,11 +958,11 @@ def msaview(protein, categories=False):
 	outfn = os.path.join(PATH, protein + '_grouped_msa.png')
 
 	if not os.path.isfile(alignmentFile):
-		print('Sorted MSA fasta file not found. Run step 2 for this file to be created.')
-		sys.exit()
+		print('Sorted MSA fasta file not found. Run step 2 for this file to be created.\nSkipping this step')
+		return
 	if not os.path.isfile(groupfn):
-		print('Grouping file not found. Run step 4 for this file to be created.')
-		sys.exit()
+		print('Grouping file not found. Run step 4 for this file to be created.\nSkipping this step')
+		return
 
 	catgoryfile = ''
 	if not categories:
@@ -1187,8 +1187,8 @@ def grouptree(protein, skipclusters, genomequality):
 	treefn = 'refseq_tree_l{}.tre'.format(genomequality)
 
 	if not os.path.isfile(groupfn):
-		print('Grouping file not found. Run step 4 for this file to be created.')
-		sys.exit()
+		print('Grouping file not found. Run step 4 for this file to be created.\nSkipping this step')
+		return
 
 	if not os.path.isfile(treefn):
 		_makeTree(genomequality)
@@ -1231,11 +1231,11 @@ def motifAnalysis(protein, skipclusters):
 	groupfn = os.path.join(PATH, protein + '_promoters_groups.csv')
 
 	if not os.path.isfile(fastafn):
-		print('MSA fasta file not found. Run step 1 for this file to be created.')
-		sys.exit()
+		print('MSA fasta file not found. Run step 1 for this file to be created.\nSkipping this step')
+		return
 	if not os.path.isfile(groupfn):
-		print('Grouping file not found. Run step 4 for this file to be created.')
-		sys.exit()
+		print('Grouping file not found. Run step 4 for this file to be created.\nSkipping this step')
+		return
 
 	#dict like object fasta-headers as keys
 	seqs = SeqIO.index(fastafn, 'fasta', alphabet=DNAAlphabet())
@@ -1431,16 +1431,16 @@ def clusterisoforms(protein, skipclusters, isoforms, guess=False):
 	outfn2 = os.path.join(PATH, protein + '_promoters_isoformstree.pdf')
 
 	if not os.path.isfile(treefile):
-		print('Newick-tree file not found. Run step 3 for this file to be created.')
-		sys.exit()
+		print('Newick-tree file not found. Run step 3 for this file to be created.\nSkipping this step')
+		return
 
 	if not os.path.isfile(groupfn):
-		print('Grouping file not found. Run step 4 for this file to be created.')
-		sys.exit()
+		print('Grouping file not found. Run step 4 for this file to be created.\nSkipping this step')
+		return
 
 	if not os.path.isfile(annotationfn):
-		print('Annotation file for promoter sequences not found. Run step 0 for this file to be created.')
-		sys.exit()
+		print('Annotation file for promoter sequences not found. Run step 0 for this file to be created.\nSkipping this step')
+		return
 
 	if not len(isoforms):
 		print('No isoforms specified, analysis is not possible! Skipping this step.')
