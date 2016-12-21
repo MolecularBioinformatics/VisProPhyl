@@ -756,8 +756,8 @@ def runMegacc(protein):
 	with open(treefn, 'r') as f:
 		filestr = f.read()
 
-	reg = '_(?=[0-9]+:[0-9].[0-9]+)'
-	filestr = re.sub(reg, '^', filestr)
+	filestr = re.sub('_(?=[0-9]+:[0-9].[0-9]+)', '^', filestr)
+	filestr = re.sub('_(?=[0-9]+\^[0-9]+:[0-9].[0-9]+)', '^', filestr)
 
 	with open(treefn, 'w') as out:
 		out.write(filestr)
@@ -1078,7 +1078,8 @@ def msaview(protein, categories=False):
 		taxagroups = {taxid: basecolors[i % len(basecolors)] for i, taxid in enumerate(categories)}
 
 		for seq in order:
-			acc, tax = seq.split('^')
+			acc = seq.split('^')[0]
+			tax = seq.split('^')[0]
 			lin = TF.getLineage(int(tax), display='taxid')
 			for taxa, color in taxagroups.items():
 				if str(taxa) in lin:
