@@ -14,7 +14,6 @@ from copy import deepcopy
 import re
 from glob import glob
 from PIL import Image
-from taxfinder import TaxFinder
 from phylogenetics import NodeSanitizer
 from phylotree import Clusters
 from collections import defaultdict
@@ -157,10 +156,13 @@ def readConfig(defaultargs):
 		else:
 			raise ValueError
 
-	vartransform = {'verbose': checkbool, 'startfrom': lambda x: x, 'only': lambda x: x, 'end': lambda x: x, 'path': lambda x: x,
-					'evalue': int, 'genomequality': int, 'phylopath': lambda x: x, 'length': int, 'dontdo': lambda x: x.split(),
-					'drop': lambda x: x.split(), 'threshold': float, 'skipclusters': lambda x: x.split(), 'isoforms': lambda x: x.split(),
-					'categories': lambda x: x.split()}
+	identity = lambda x: x
+	tolist = lambda x: x.split()
+
+	vartransform = {'verbose': checkbool, 'startfrom': identity, 'only': identity, 'end': identity, 'path': identity,
+					'evalue': int, 'genomequality': int, 'phylopath': identity, 'length': int, 'dontdo': tolist,
+					'drop': tolist, 'threshold': float, 'skipclusters': tolist, 'isoforms': tolist,
+					'categories': tolist, 'highlight': tolist}
 
 	runargs = []
 	current = None
@@ -942,7 +944,7 @@ def treeClusters(protein, threshold):
 	# test vis end
 
 
-def msaview(protein, categories=False):
+def msaview(protein, categories=False, highlight=list()):
 	'''
 	Visualise the MSA & the groups of the megaCC clustering.
 	Adapted from msa_viewer.py
@@ -975,6 +977,7 @@ def msaview(protein, categories=False):
 		print('Expected a file for Categories, but the file location was not valid (or not an actual file location). Ignoring categories')
 		categories = False
 	else:
+		from taxfinder import TaxFinder
 		try:
 			categories = tuple(map(int, categories))
 			TF = TaxFinder()
@@ -998,24 +1001,40 @@ def msaview(protein, categories=False):
 		'W': (0, 0, 0),
 		'K': (0, 0, 0),
 		'M': (0, 0, 0),
-		'S': (0, 0, 0)	}
+		'S': (0, 0, 0) }
+
+	#More colors should be added here to discern between mutliple features
+	highlightcolors = [(244, 188, 66)]
 
 	clustercolors = [(166, 206, 227), (31, 120, 180), (178, 223, 138), (51, 160, 44), (251, 154, 153), (227, 26, 28),
 					 (253, 191, 111), (255, 127, 0), (202, 178, 214), (106, 61, 154), (255, 255, 179), (255, 234, 77), (177, 89, 40), (0, 0, 0)]
 
+
 	data = {}
-	current = None
 
-	with open(alignmentFile) as f:
-		for line in f:
-			line = line.rstrip()
+	for rec in SeqIO.parse(alignmentFile, 'fasta'):
+		current = rec.name
+		data[current] = []
+		hcounter = 0
+		hcolorindex = 0
+		for i, char in enumerate(rec.seq):
+			if hcounter and char != '-':
+				data[current].append(highlightcolors[hcolorindex % len(highlightcolors)])
+				hcounter -= 1
+				if hcounter == 0:
+					hcolorindex += 1
 
-			if line.startswith('>'):
-				current = line.split()[0][1:]
-				data[current] = []
-			else:
-				for char in line:
+			elif highlight and char != '-':
+				for high in highlight:
+					if high == str(rec.seq[i:]).replace('-', '')[:len(high)]:
+						data[current].append(highlightcolors[hcolorindex % len(highlightcolors)])
+						hcounter = len(high) - 1
+						break
+				else:
 					data[current].append(dnacolors[char])
+
+			else:
+				data[current].append(dnacolors[char])
 
 	groupcolors = {}
 	order = []
@@ -1122,6 +1141,7 @@ def _makeTree(quality_level=1):
 	if not os.path.isfile('refseq_taxids_l{}.txt'.format(quality_level)):
 		taxids(quality_level)
 
+	from taxfinder import TaxFinder
 	Sani = NodeSanitizer()
 	TF = TaxFinder()
 
@@ -1579,7 +1599,7 @@ tasks = {'acquire': ('find and download promoter sequences', getPromoterSeqs, ['
 		 'autosort': ('similarity sort MSA for clustering', autosort, ['drop']),
 		 'megacc': ('run MSA clustering with Megacc', runMegacc, []),
 		 'grouping': ('find groups in clustered MSA', treeClusters, ['threshold']),
-		 'msaview': ('Make plot of the MSA including the groups', msaview, ['categories']),
+		 'msaview': ('Make plot of the MSA including the groups', msaview, ['categories', 'highlight']),
 		 'grouptree': ('Show distributions of the cluster over a tree.', grouptree, ['skipclusters', 'genomequality']),
 		 'motifs': ('analyse MSA cluster groups for motifs', motifAnalysis, ['skipclusters']),
 		 'isoforms': ('Determine isoform distribution of clusters', clusterisoforms, ['skipclusters', 'isoforms'])}
@@ -1686,6 +1706,7 @@ if __name__ == '__main__':
 	group5 = parser.add_argument_group('5.', 'Optional arguments applied during step 5: msaview.')
 
 	group5.add_argument('-cat', '--categories', nargs='+', default=False, help='Either a file specifing a categories for certain entires, or a list of mother species to build categories of.')
+	group5.add_argument('-high', '--highlight', nargs='+', default=[], help='Sequences that should be highlighted in an extra color instead if normal colouring')
 
 	#step 6+
 	group6 = parser.add_argument_group('6+', 'Optional arguments applied from step 6 on: grouptree, motif, isoforms.')
