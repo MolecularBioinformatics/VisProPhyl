@@ -5,6 +5,7 @@ import os
 from PIL import Image, ImageDraw, ImageFont # install pillow, not pil!
 from ete3 import Tree # For easy Newick tree traversal
 
+#TODO: add_categories & add_clusters is missing
 
 class MSA():
 
@@ -74,6 +75,7 @@ class MSA():
 					current = line[1:]
 					pos = 0
 					alignment = []
+					# A bit too much hardcoding here I guess
 					acc = '_'.join(current.split('_')[3:])
 					self.longest_name = max(len(current), self.longest_name)
 					if overwrite_order:
@@ -254,18 +256,19 @@ class MSA():
 			font_width = int(font_width * 1.4)
 			yoffset = font_height if self.overlay_acc else 0
 			height = len(self.order) * font_height + 2 * yoffset
-			width = len(self.alignment[self.order[0]]['letters']) * font_width + xoffset
+			width = len(self.alignment[self.order[0]]['letters']) * font_width + xoffset #TODO: width depends on presence of categories & clusters
 
 			im = Image.new('RGB', (width + 4*self.border_width, height), (255,255,255))
 			draw = ImageDraw.Draw(im)
 
 			for y, elem in enumerate(self.order):
 				if self.border_width:
-					draw.rectangle(((self.border_width, y*font_height + yoffset), (2*self.border_width, (y+1)*font_height + yoffset)), category[elem])
-					draw.rectangle(((width + 2*self.border_width, y*font_height + yoffset), (width + 3*self.border_width, (y+1)*font_height + yoffset)), category[elem])
+					#TODO: Categories should also be optional
+					draw.rectangle(((self.border_width, y*font_height + yoffset), (2*self.border_width, (y+1)*font_height + yoffset)), self.category[elem])
+					draw.rectangle(((width + 2*self.border_width, y*font_height + yoffset), (width + 3*self.border_width, (y+1)*font_height + yoffset)), self.category[elem])
 					if self.clusters:
-						draw.rectangle(((0, y*font_height + yoffset), (self.border_width, (y+1)*font_height + yoffset)), clusters[elem])
-						draw.rectangle(((width + 3*self.border_width, y*font_height + yoffset), (width + 4*self.border_width, (y+1)*font_height + yoffset)), clusters[elem])
+						draw.rectangle(((0, y*font_height + yoffset), (self.border_width, (y+1)*font_height + yoffset)), self.clusters[elem])
+						draw.rectangle(((width + 3*self.border_width, y*font_height + yoffset), (width + 4*self.border_width, (y+1)*font_height + yoffset)), self.clusters[elem])
 				draw.text((1 + 2*self.border_width, y*font_height + yoffset), self.alignment[elem]['name'], fill = (0,0,0), font = monofont)
 				try:
 					colors = self.alignment[elem]['colors']
@@ -284,12 +287,13 @@ class MSA():
 
 			for y, elem in enumerate(self.order):
 				for x in range(self.border_width):
-					im.putpixel((x + self.border_width, y + yoffset), category[elem])
-					im.putpixel((x + width + 2*self.border_width, y + yoffset), category[elem])
+					# TODO: Categories should also be optional
+					im.putpixel((x + self.border_width, y + yoffset), self.category[elem])
+					im.putpixel((x + width + 2*self.border_width, y + yoffset), self.category[elem])
 
 					if self.clusters:
-						im.putpixel((x, y + yoffset), clusters[elem])
-						im.putpixel((x + width + 3*self.border_width, y + yoffset), clusters[elem])
+						im.putpixel((x, y + yoffset), self.clusters[elem])
+						im.putpixel((x + width + 3*self.border_width, y + yoffset), self.clusters[elem])
 				try:
 					for x, value in enumerate(self.alignment[elem]['colors']):
 						im.putpixel((x + 2*self.border_width, y + yoffset), value)
