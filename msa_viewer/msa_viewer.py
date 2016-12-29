@@ -8,12 +8,17 @@ from ete3 import Tree # For easy Newick tree traversal
 
 class MSA():
 
-	def __init__(self, alignment_file, print_color=False, is_dna=False, save_fn='msa.png', border_width=10):
+	def __init__(self, alignment_file, print_color=False, is_dna=False, save_fn='msa.png', border_width=10, cluster_threshold=0, cluster_seeds=None):
 		self.alignment_file = alignment_file
 		self.print_color = print_color
 		self.is_dna = is_dna
 		self.save_fn = save_fn
 		self.border_width = border_width
+		self.threshold = cluster_threshold
+
+		self.cluster_seeds = cluster_seeds
+		if self.cluster_seeds:
+			self.cluster_seeds = self.cluster_seeds.split(',')
 
 		self.alignment = {}
 
@@ -361,12 +366,60 @@ class MSA():
 
 
 	def add_newick_info(self, fn, overwrite_order = False):
+
+		def getClusters(t, threshold, clustercolors):
+			clusters = {}
+			currentCluster = None
+			clusterNo = 0
+
+			for node in t.traverse('postorder'):
+				if node.is_leaf():
+					if currentCluster == None:
+						currentCluster = node
+
+					if t.get_distance(currentCluster, node) > threshold:
+						currentCluster = node
+						clusterNo = int((clusterNo + 1) % len(clustercolors))
+
+					clusters[node.name] = clustercolors[clusterNo]
+
+			return clusters
+
+
+		def getFixedClusters(t, seedNames, clustercolors):
+			seeds = []
+			for node in t.traverse('postorder'):
+				if node.is_leaf():
+					for seedName in seedNames:
+						if seedName in node.name:
+							seeds.append(node)
+							break
+
+			clusters = {}
+
+			for node in t.traverse('postorder'):
+				if node.is_leaf():
+
+					dist = float('inf')
+					idx = 0
+
+					for i, seed in enumerate(seeds):
+						d = t.get_distance(seed, node)
+						if d < dist:
+							dist = d
+							idx = i
+
+					clusters[node.name] = clustercolors[idx]
+
+			return clusters
+
+
 		mytree = Tree(fn)
 
-		#if threshold:
-		#	clusters = getClusters(mytree, threshold, clustercolors)
-		#else:
-		#	clusters = getFixedClusters(mytree, seeds, clustercolors)
+		if self.threshold:
+			self.clusters = getClusters(mytree, self.threshold, self.clustercolors)
+		elif self.cluster_seeds:
+			self.clusters = getFixedClusters(mytree, self.cluster_seeds, clustercolors)
 
 		if overwrite_order:
 			self.order = []
