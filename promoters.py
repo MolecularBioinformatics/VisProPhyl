@@ -136,6 +136,61 @@ class taxids:
 				out.write("\t".join((lline[5], lline[0], lline[19])) + '\n')  # taxid, acc, ftp-link
 
 
+# TODO: make an example file & include in init
+class category_cache:
+	def __init__(self):
+		self.cache = defaultdict(lambda: [defaultdict(list), {}]) #[{cat -> taxids}, {taxids -> color}]
+
+	def addCategories(self, catgoryfile):
+		if os.path.isfile(catgoryfile):
+			catgoryfile = catgoryfile
+		elif os.path.isfile(os.path.join(PATH, catgoryfile)):
+			catgoryfile = os.path.join(PATH, catgoryfile)
+		else:
+			print('Expected a file for Categories, but the file location was not valid (or not an actual file location). Exiting script.')
+			sys.exit()
+
+		basecolors = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 0), (0, 255, 255)]
+
+		with open(catgoryfile, 'r') as f:
+			current = 0
+			color = False
+			catname = False
+			for line in f:
+				line = line.split('#')[0].rstrip()
+				if not line:
+					continue
+
+				if line.startswith('!'):
+					catname = line[1:].split()[0]
+					cstringl = re.findall('\( *[0-9]{1,3}, *[0-9]{1,3}, *[0-9]{1,3} *\)', line)
+					if len(cstringl):
+						color = eval(cstringl[0])
+					continue
+
+				accessions = line.split(',')
+
+				for elem in accessions:
+					c = color or basecolors[current % len(basecolors)]
+					self.cache[catgoryfile][1][elem] = c
+
+					if '^' in elem:
+						self.cache[catgoryfile][0][catname].append(elem.split('^')[1])
+					else:
+						self.cache[catgoryfile][0][catname].append(elem)
+
+				current += bool(color)
+				color = False
+				catname = False
+
+
+	def getCatDict(self, filename):
+		return self.cache[filename][0]
+
+	def getColorMap(self, filename):
+		return self.cache[filename][1]
+
+
 def readConfig(defaultargs):
 	'''
 	Read the config file and run the workflow accordingly.
@@ -162,7 +217,7 @@ def readConfig(defaultargs):
 	vartransform = {'verbose': checkbool, 'startfrom': identity, 'only': identity, 'end': identity, 'path': identity,
 					'evalue': int, 'genomequality': int, 'phylopath': identity, 'length': int, 'dontdo': tolist,
 					'drop': tolist, 'threshold': float, 'skipclusters': tolist, 'isoforms': tolist,
-					'categories': tolist, 'highlight': tolist}
+					'categories': identity, 'highlight': tolist, 'split':identity}
 
 	runargs = []
 	current = None
@@ -223,10 +278,35 @@ def readConfig(defaultargs):
 		if PATH:
 			os.makedirs(PATH, exist_ok=True)
 
-		if args.only:
-			runWorkflow(args, args.only, args.only)
+		if (args.split is None and args.categories) or args.split:
+			if args.split is None:
+				args.split = args.categories
+
+			if args.split not in CATCACHE.cache:
+				CATCACHE.addCategories(args.split)
+
+			cats = CATCACHE.getCatDict(args.split)
+
+			for cat, taxids in cats.items():
+				files = [fn for fn in glob(os.path.join(PATH, 'PromoterSeqs_{}/*.fasta'.format(args.protein))) if _myGetBasename(fn).split('^')[1] in taxids]
+				newfn = os.path.join(PATH, '{}_{}.fasta'.format(args.protein, cat))
+				with open(newfn, 'w') as out:
+					SeqIO.write((SeqIO.read(f, 'fasta') for f in files), out, 'fasta')
+
+				run = deepcopy(args)
+				run.protein = run.protein + '_' + cat
+				run.fastafile = newfn
+
+				if run.only:
+					runWorkflow(run, run.only, run.only)
+				else:
+					runWorkflow(run, run.startfrom, run.end)
+
 		else:
-			runWorkflow(args, args.startfrom, args.end)
+			if args.only:
+				runWorkflow(args, args.only, args.only)
+			else:
+				runWorkflow(args, args.startfrom, args.end)
 
 
 #  If this script is to be used without the phylogenetics.py workflow (up to step 2) then this function will have to be
@@ -552,7 +632,7 @@ def getPromoterSeqs(protein, evalue, length, genomequality, phylopath):
 	_loadPromoterSeq(protein, length)
 
 
-def runClustal(protein):
+def runClustal(protein, fastafile = ''):
 	'''
 	Wrapper to call run clustalo over all downloaded fasta files
 
@@ -565,20 +645,36 @@ def runClustal(protein):
 	if VERBOSITY:
 		v = '-v '
 
-	pin = os.path.join(PATH, 'PromoterSeqs_{}/*.fasta'.format(protein))
-	pout = os.path.join(PATH, '{}_promoters_aligned.fasta'.format(protein))
+	if not fastafile:
+		pin = os.path.join(PATH, 'PromoterSeqs_{}/*.fasta'.format(protein))
+		pout = os.path.join(PATH, '{}_promoters_aligned.fasta'.format(protein))
 
-	files = glob(pin)
-	if not len(files):
-		print('No fasta files for MSA could be found. Exiting script.')
-		sys.exit()
+		files = glob(pin)
+		if not len(files):
+			print('No fasta files for MSA could be found. Exiting script.')
+			sys.exit()
 
-	cmd = 'clustalo -i - {}-o {} --force'.format(v, pout)
+		cmd = 'clustalo -i - {}-o {} --force'.format(v, pout)
 
-	p1 = subprocess.Popen(['cat']+files, stdout=subprocess.PIPE)
-	p2 = subprocess.Popen(cmd.split(), stdin=p1.stdout)
-	p2.wait()
-	p1.stdout.close()
+		p1 = subprocess.Popen(['cat']+files, stdout=subprocess.PIPE)
+		p2 = subprocess.Popen(cmd.split(), stdin=p1.stdout)
+		p2.wait()
+		p1.stdout.close()
+
+	else:
+		if os.path.isfile(fastafile):
+			pin = fastafile
+		else:
+			pin = os.path.join(PATH, fastafile)
+		pout = os.path.join(PATH, '{}_promoters_aligned.fasta'.format(protein))
+
+		if not os.path.isfile(pin):
+			print('No fasta file for MSA could be found. Exiting script.')
+			sys.exit()
+
+		cmd = 'clustalo -i {} {}-o {} --force'.format(pin, v, pout)
+
+		subprocess.call(cmd.split())
 
 
 def _pw_similarity(seqs, names):
@@ -951,7 +1047,7 @@ def msaview(protein, categories=False, highlight=list()):
 
 	:uses: {protein}_promoters_groups.csv, {protein}_promoters_kept.fasta
 	:param protein: protein name from phylogenetics workflow
-	:param categories: ignored if falsy, otherwise filename or list with (mother) taxids to specify categories
+	:param categories: ignored if falsy, otherwise filename to specify categories
 	:creates: {protein}_grouped_msa.png
 	'''
 
@@ -965,27 +1061,6 @@ def msaview(protein, categories=False, highlight=list()):
 	if not os.path.isfile(groupfn):
 		print('Grouping file not found. Run step 4 for this file to be created.\nSkipping this step')
 		return
-
-	catgoryfile = ''
-	if not categories:
-		pass
-	elif len(categories) == 1 and os.path.isfile(categories[0]):
-		catgoryfile = categories[0]
-	elif len(categories) == 1 and os.path.isfile(os.path.join(PATH, categories[0])):
-		catgoryfile = categories[0]
-	elif len(categories) == 1 and isinstance(categories[0], str):
-		print('Expected a file for Categories, but the file location was not valid (or not an actual file location). Ignoring categories')
-		categories = False
-	else:
-		from taxfinder import TaxFinder
-		try:
-			categories = tuple(map(int, categories))
-			TF = TaxFinder()
-			if not all(TF.getTaxInfo(tax)['name'] != 'unclassified' for tax in categories):
-				raise ValueError
-		except ValueError:
-			print('Categories must either be a valid filename or list of valid taxids. Ignoring categories')
-			categories = False
 
 	dnacolors = {
 		'A': (203, 0, 0),
@@ -1058,52 +1133,22 @@ def msaview(protein, categories=False, highlight=list()):
 			current += 1
 
 	category = {taxacc: (255,255,255) for taxacc in order}
-	basecolors = [(255,0,0), (0,255,0), (0,0,255), (255,255,0), (0,255,255)]
 
-	if catgoryfile:
-		# Predefined categories
+	if categories:
 		# Use same filesyntax as groupfile, except color can be definded in `! ....` lines as rgb tuple
-		# TODO: make an example file & include in init
-		with open(catgoryfile, 'r') as f:
-			current = 0
-			color = False
-			for line in f:
-				line = line.split('#')[0].rstrip()
-				if not line:
-					continue
+		if categories not in CATCACHE.cache:
+			CATCACHE.addCategories(categories)
 
-				if line.startswith('!'):
-					cstringl = re.findall('\( *[0-9]{1,3}, *[0-9]{1,3}, *[0-9]{1,3} *\)', line)
-					if len(cstringl):
-						color = eval(cstringl[0])
-					continue
+		colors = CATCACHE.getColorMap(categories)
 
-				accessions = line.split(',')
+		if all('^' in x for x in colors.keys()):
+			category.update(colors)
 
-				for elem in accessions:
-					c = color or basecolors[current % len(basecolors)]
-					if '^' in elem: #assume 'acc^tax'
-						category[elem] = c
-					elif elem.isdigit(): #assume taxid
-						for acctax in order:
-							if elem == acctax.split('^')[1]:
-								category[acctax] = c
-
-				current += bool(color)
-				color = False
-
-	elif categories:
-		# Determine category based on lineage (categories should be a list with 'mother' tax-ids)
-		taxagroups = {taxid: basecolors[i % len(basecolors)] for i, taxid in enumerate(categories)}
-
-		for seq in order:
-			acc = seq.split('^')[0]
-			tax = seq.split('^')[0]
-			lin = TF.getLineage(int(tax), display='taxid')
-			for taxa, color in taxagroups.items():
-				if str(taxa) in lin:
-					category[seq] = color
-
+		else:
+			for tax, c in colors.items():
+				for acctax in order:
+					if tax == acctax.split('^')[1]:
+						category[acctax] = c
 
 
 	height = len(order)
@@ -1595,7 +1640,7 @@ def clusterisoforms(protein, skipclusters, isoforms, guess=False):
 tasknames = ['acquire', 'clustal', 'autosort', 'megacc', 'grouping', 'msaview', 'grouptree', 'motifs', 'isoforms']
 
 tasks = {'acquire': ('find and download promoter sequences', getPromoterSeqs, ['evalue', 'length', 'genomequality', 'phylopath']),
-		 'clustal': ('run MSA with clustalo', runClustal, []),
+		 'clustal': ('run MSA with clustalo', runClustal, ['fastafile']),
 		 'autosort': ('similarity sort MSA for clustering', autosort, ['drop']),
 		 'megacc': ('run MSA clustering with Megacc', runMegacc, []),
 		 'grouping': ('find groups in clustered MSA', treeClusters, ['threshold']),
@@ -1647,9 +1692,11 @@ def runWorkflow(addargs, start, end=''):
 		else:
 			dontids += [tasknames.index(dont)]
 
+	if addargs.fastafile:
+		dontids += [0]
 
-	for i, taskname in enumerate(tasknames[startidx:endidx]):
-		if i in dontids:
+	for i, taskname in enumerate(tasknames):
+		if i in dontids or i < startidx or i >= endidx:
 			continue
 		if VERBOSITY:
 			print('{}: "{}"'.format(taskname, tasks[taskname][0]))
@@ -1686,10 +1733,10 @@ if __name__ == '__main__':
 	# only step 0 - loading
 	group0 = parser.add_argument_group('0.', 'Optional arguments applied during step 0: loading.')
 
+	group0.add_argument('-ff', '--fastafile', default='', help='Use an existing fasta file with sequences, skips normal loading step')
 	group0.add_argument('--evalue', default=50, type=int, help='Lowest exponent allowed as evalue during hit-collection. Default: 50')
 	group0.add_argument('--length', default=1500, type=int, help='Number of bases in front of CDS to be acquired as promoter sequence. Default: 1500')
 	group0.add_argument('-q', '--genomequality', default=1, type=int, help='Quality level for refseq genomes (also in step 6). 0: all, 1: atleast chromosome, 2: representative/reference')
-	# Optional todo: reconfigure / add extra option to use specific file instead
 	group0.add_argument('--phylopath', default='', help='Specify the filepath for phylogenetics workflow')
 
 	# only step 2 - autosort
@@ -1705,7 +1752,7 @@ if __name__ == '__main__':
 	#only step 5 - msaview
 	group5 = parser.add_argument_group('5.', 'Optional arguments applied during step 5: msaview.')
 
-	group5.add_argument('-cat', '--categories', nargs='+', default=False, help='Either a file specifing a categories for certain entires, or a list of mother species to build categories of.')
+	group5.add_argument('-cat', '--categories', default='', help='A file specifing categories for certain taxids (or tax^acc')
 	group5.add_argument('-high', '--highlight', nargs='+', default=[], help='Sequences that should be highlighted in an extra color instead if normal colouring')
 
 	#step 6+
@@ -1717,6 +1764,11 @@ if __name__ == '__main__':
 	group8 = parser.add_argument_group('8', 'Optional arguments applied during step 8: isoforms.')
 
 	group8.add_argument('-is', '--isoforms', nargs='+', default=[], help="Names of all knwon/possible isoforms (NCBI gene symbols).")
+
+	#only with config
+	groupc = parser.add_argument_group('Config', 'Optional arguments usbale only from config file.')
+
+	groupc.add_argument('-sp', '--split', nargs='?', const=None, default='', help='Specify the filepath for a file that specifiec categories for the sequences, falls back on value for -cat')
 
 
 	args = parser.parse_args()
@@ -1732,6 +1784,8 @@ if __name__ == '__main__':
 		sys.exit()
 
 	# check if init has been run
+
+	CATCACHE = category_cache()
 
 	if args.config:
 		readConfig(args)
