@@ -1,4 +1,30 @@
 #!/usr/bin/env python3
+
+# promoters.py	Version 1.0 (11.02.2017)
+
+# This script is written by Nicolai v. Kügelgen during work on my master thesis.
+# It is intended for automatic analysis of promoter sequences (MSA, clustering by phylogeny)
+# More advanced features, that don't work too well are:
+# - finding similar groups in clustered MSA based on pw-similarity values
+# - detection of conserved motifs and isoform (gene symbol) distribution in these groups
+# The algorithm to find groups in the alignment does not work very well, so the downstream motifs etc are npt too good either
+#
+# Further devemoplement options /notes:
+# 1) Functional improvement / avoid buggy behaviour
+#	- always 'clean' folders before writing in any data (is done in some cases but not all)
+#	- The Seqlogo generation (mitf analysis) from Biopython might be bugged (height scaling is not always correct)
+#
+# 2) Extra features for the config file (& configReader function)
+#	- mean-functions & threshhold values used in treeClusters()
+#	- numbers (scores) & normalisation used in _similarity()
+#	- numbers (window lenght & score, overlap settings) in motif analysis function
+#	- pruning file used in grouptree()
+#
+# 3) Further possible features
+#	- The sequences removed by the pairwise similarity matrix could also be analysed separately & added as extra groups
+#	- Possible Isoforms / gene symbols could be 'guessed' from all possibilities
+#	- grouping algorithm could be adapted to run multiple times and automaically set the threshhold so that a given number/range of groups is generated
+
 import os
 import sys
 from ete3 import Tree, TreeStyle, faces, AttrFace, TextFace, NodeStyle
@@ -22,18 +48,6 @@ VERBOSITY = False
 Entrez.email = 'nicolai.von-kuegelgen@student.uni-tuebingen.de'
 Entrez.tool = 'PromoterAnalysis-NvK'
 
-# ToDo: extras for config file
-#	- functions (& threshhold) used in treeClusters
-#	- numbers & normalisation used in _similarity
-#	- numbers in motif analysis function
-
-
-# ToDo: clean state & file checking
-# - to avoid wierd bugs always clean folders into which files will be downloaded
-#  possible exceptions: featuretables (should be cleaned/updated regularly but not with every run)
-# - see that all functions give (nice) errors if necessary files are missing
-# - check/fix docstrings
-
 def _myGetBasename(name):
 	'''
 	Strips the path and the extension from a filename. E.g. /a/path/to/file.png -> file
@@ -45,7 +59,6 @@ def _myGetBasename(name):
 	return os.path.splitext(os.path.basename(name))[0]
 
 
-# ToDo: forced call of this should update all files from scratch / 'reinitialise' (? maybe ?)
 def init():
 	'''
 	Creates some files to start with a new project. Existing files will not be overwritten.
@@ -72,7 +85,7 @@ def init():
 				out.write(f.read())
 
 
-# opt: also use this class to provide/make a base tree for the given g-quality
+# TODO opt: also use this class to provide/make a base tree for the given g-quality
 class taxids:
 	def __init__(self, qlevel=1):
 		"""Provide an instance with all taxids of genomes in refseq for a given quality level, their accession numbers and ftp-download locations.
@@ -81,8 +94,7 @@ class taxids:
 		"""
 		self.ids = set()
 		self.map = dict()
-		#not really needed, but maybe someday
-		self.qlevel = qlevel
+		self.qlevel = qlevel #not really needed, but maybe someday
 
 		if not os.path.isfile('refseq_taxids_l{}.txt'.format(qlevel)):
 			self.generatefiles(qlevel)
@@ -136,12 +148,18 @@ class taxids:
 				out.write("\t".join((lline[5], lline[0], lline[19])) + '\n')  # taxid, acc, ftp-link
 
 
-# TODO: make an example file & include in init
 class category_cache:
 	def __init__(self):
+		"""
+		A class to read in a category file and provide its content
+		"""
 		self.cache = defaultdict(lambda: [defaultdict(list), {}]) #[{cat -> taxids}, {taxids -> color}]
 
 	def addCategories(self, catgoryfile):
+		"""
+		Reads the content of a given file into the class instance
+		:param catgoryfile: filename
+		"""
 		if os.path.isfile(catgoryfile):
 			catgoryfile = catgoryfile
 		elif os.path.isfile(os.path.join(PATH, catgoryfile)):
@@ -185,9 +203,17 @@ class category_cache:
 
 
 	def getCatDict(self, filename):
+		"""
+		Retruns a dictionary mapping previously read in category names to a list of tax-ids
+		:param filename: name of the previoisly read in category file
+		"""
 		return self.cache[filename][0]
 
 	def getColorMap(self, filename):
+		"""
+		Returns a dictionary mapping tax-ids to rgb color tuples from a previously read in category file
+		:param filename: name of the previoisly read in category file
+		"""
 		return self.cache[filename][1]
 
 
@@ -203,6 +229,7 @@ def readConfig(defaultargs):
 		print('Could not find config file, please run init (-i) and edit the config base file.')
 		sys.exit()
 
+	# helper functions for parsing of paramater values from config file
 	def checkbool(x):
 		if x.lower() == 'true':
 			return True
@@ -232,11 +259,13 @@ def readConfig(defaultargs):
 				if not line:
 					continue
 
+				# end protein specific block
 				if line.startswith('!!'):
 					setattr(currentargs, 'protein', current)
 					runargs.append(currentargs)
 					continue
 
+				# start new protein specific block
 				elif line.startswith('!'):
 					current = line[1:]
 					currentargs = deepcopy(defaultargs)
@@ -266,7 +295,7 @@ def readConfig(defaultargs):
 			print('Unknown Error in Config file')
 			sys.exit()
 
-
+	# run the workflow for all proteins as specified by the config file
 	for args in runargs:
 		global PATH, VERBOSITY
 		PATH = args.path
@@ -278,6 +307,7 @@ def readConfig(defaultargs):
 		if PATH:
 			os.makedirs(PATH, exist_ok=True)
 
+		# Splitting of the sequences based on a category file
 		if (args.split is None and args.categories) or args.split:
 			if args.split is None:
 				args.split = args.categories
@@ -285,14 +315,18 @@ def readConfig(defaultargs):
 			if args.split not in CATCACHE.cache:
 				CATCACHE.addCategories(args.split)
 
+			# read in file for splitting
 			cats = CATCACHE.getCatDict(args.split)
 
+			# for each split category collect all corresponding sequences files (must be named: acc^tax-id)
 			for cat, taxids in cats.items():
 				files = [fn for fn in glob(os.path.join(PATH, 'PromoterSeqs_{}/*.fasta'.format(args.protein))) if _myGetBasename(fn).split('^')[1] in taxids]
+				# create on file with all sequences for each category
 				newfn = os.path.join(PATH, '{}_{}.fasta'.format(args.protein, cat))
 				with open(newfn, 'w') as out:
 					SeqIO.write((SeqIO.read(f, 'fasta') for f in files), out, 'fasta')
 
+				# adapt run settings for each category and run
 				run = deepcopy(args)
 				run.protein = run.protein + '_' + cat
 				run.fastafile = newfn
@@ -302,6 +336,7 @@ def readConfig(defaultargs):
 				else:
 					runWorkflow(run, run.startfrom, run.end)
 
+		# normal run for one protein
 		else:
 			if args.only:
 				runWorkflow(args, args.only, args.only)
@@ -309,8 +344,8 @@ def readConfig(defaultargs):
 				runWorkflow(args, args.startfrom, args.end)
 
 
-#  If this script is to be used without the phylogenetics.py workflow (up to step 2) then this function will have to be
-#  substituted with/adapted to a parser for a list of protein Accession-IDs and probably also the TaxFinder module/class
+# A function to collect promoters based on the ``phylogenetics.py` workflow
+# This step can be skipped if a folder with promoter sequnces (named acc^tax) is provided
 def _getUniqueAccs(protein, taxid, cutoff=50, phylopath=''):
 	"""Read combinedtables from Phylogenetics workflow.
 	 Extract Accesion numbers and taxids for hits, apply refseq as filter, save to file
@@ -322,8 +357,8 @@ def _getUniqueAccs(protein, taxid, cutoff=50, phylopath=''):
 	 :creates: {prortein}_hits.txt
 	 """
 
-	# add option to read from config file
-	# search for phylogenetics workflow
+	# Search for the folder of the phylogenetics workflow
+	# if its not in the wkdir, it needs to be given via the 'phylopath' variable
 	if os.path.isfile("combinedtables/{}.tsv".format(protein)):
 		p = "combinedtables/{}.tsv".format(protein)
 	elif os.path.isfile(os.path.join(PATH, "combinedtables/{}.tsv".format(protein))):
@@ -349,6 +384,7 @@ def _getUniqueAccs(protein, taxid, cutoff=50, phylopath=''):
 	if VERBOSITY:
 		print('Getting usable blast hits for {:<10}'.format(protein), end='\r')
 
+	# Read in files from the 'combinedtables' folder
 	with open(p, "r") as f:
 		next(f)
 		accs = set()
@@ -363,7 +399,7 @@ def _getUniqueAccs(protein, taxid, cutoff=50, phylopath=''):
 			if tax not in taxid.ids:
 				continue
 
-			#Only accept refseq protein hits, since others will not be found in the refseq genomes anyway (probably? not 100% tested)
+			#Only accept refseq protein hits, since others will not be found in the refseq genomes anyway
 			if acc[2] != '_':
 				continue
 
@@ -413,6 +449,7 @@ def _loadGenomeFeatures(protein, taxid, source='pblast'):
 	species = set()
 	os.makedirs('featuretables', exist_ok=True)
 
+	# reads previously generated file, that lists hits
 	with open(infile, 'r') as f:
 		for line in f:
 			lline = line.rstrip().split('\t')
@@ -424,6 +461,7 @@ def _loadGenomeFeatures(protein, taxid, source='pblast'):
 
 	cmd = 'rsync --copy-links -q --times rsync{}_feature_table.txt.gz featuretables/'
 
+	# download genome annotation table files from ncbi server
 	oldfiles = []
 	for tax in species:
 		if os.path.isfile('featuretables/{}_feature_table.txt'.format(tax)):
@@ -437,7 +475,7 @@ def _loadGenomeFeatures(protein, taxid, source='pblast'):
 			print('Downloading Genome annotation table for species: {:<10}'.format(tax), end='\r')
 
 		ftp = taxid.map[tax][1]
-		fn = ftp.split('/')[-1] #or os.path.basename ?
+		fn = ftp.split('/')[-1]
 
 		ret = subprocess.call(cmd.format(ftp[3:]+'/'+fn).split()) #downlaod from ncbi
 		p = 'featuretables/{}_feature_table.txt.gz'.format(fn)
@@ -452,7 +490,6 @@ def _loadGenomeFeatures(protein, taxid, source='pblast'):
 		print('Warning: Some of the present featuretables are older than one week, delete old files & rerun step 0 for an automatic update.')
 
 
-# Searching through genome annotation files may be faster with reg-ex (probably only when applying regex to whole file)
 def _extractPromoterPos(protein, source='pblast'):
 	"""Extract start & strand of Promoter for all (usable) hits a of protein
 	For each write Prot-Acc, TaxID, Genome-Acc, StartPos, Strand, GeneSym, Prot-Name into File
@@ -482,10 +519,9 @@ def _extractPromoterPos(protein, source='pblast'):
 				acc, tax = lline
 				tax_accs[tax].append(acc)
 			else:
-				# expect ONE protein per species, can deal with more, need to store tuples in list instead of just one acc each
-				# load genome-acc, mRNA-acc, (& protein acc?) for each species
+				# Note: this part was intended for the use of this script to acquire promoter sequences from tblastn hits
+				# The 'genesearch.py' script (from Dio2-THSR repository) does a better job at looking through blast results, so use that
 				raise NotImplementedError
-				#tax_accs[tax].append( (genonem-acc, mRNAacc, proteinacc) )
 
 	with open(os.path.join(PATH, '{}_hitfeatures.tsv'.format(protein)), 'w') as out:
 		out.write('#Prot-Acc\tTaxID\tGenome-Acc\tStartPos\tEndPos\tStrand\tGeneSym\tProt-Name\n')
@@ -493,15 +529,17 @@ def _extractPromoterPos(protein, source='pblast'):
 			if VERBOSITY:
 				print('Extracting promoter sequences for hits of {}, species: {:<10}'.format(protein, tax), end='\r')
 
-			#all featuretables should be there, unless user manully deletes them while script is running
+			#all featuretables should be in the folder, unless user manully deletes them while script is running
 			with open('featuretables/{}_feature_table.txt'.format(tax), 'r') as f:
+				# go through the file line for line, skip/continue if it doesn#t match on of the desired proteins
+				# if a line isn't skipped the possition & annotation of a protein is saved
 				for line in f:
 					#safe some time / only look for mRNA (which should start right after the promoter, gene apparently does aswell [even though thats not quite correct])
 					if not line.startswith('mRNA'):
 						continue
 
 					lline = line.rstrip().split('\t')
-	#Columns in *_feature_table.txt
+	#Columns (NameIndex) in *_feature_table.txt
 	#feature0	class1	assembly2	assembly_unit3	seq_type4	chromosome5	genomic_accession6	start7	end8	strand9
 	#product_accession10	non-redundant_refseq11	related_accession12	name13	symbol14	GeneID15	locus_tag16 feature_interval_length17	product_length18	attributes19
 					if source == 'pblast':
@@ -518,15 +556,13 @@ def _extractPromoterPos(protein, source='pblast'):
 						else:
 							continue
 
-
 					outl = [lline[10], tax, lline[6], lline[7], lline[8], lline[9], lline[14], lline[13]]
 					out.write('\t'.join(outl)+'\n')
 
 					if len(accs) ==0:
 						break
 				else:
-					#TODO: only with verbosity ?
-					# This should NEVER happen with tblastn: give warning (probably featuretable & refseq for tblast are not the same status/update), maybe sysexit ?
+					#Note: maybe only reprt this with verbosity ?
 					print('Extracting promoter sequences for hits of {}, species: {}, features not found: {}'.format(protein, tax, accs))
 
 
@@ -546,7 +582,6 @@ def _loadPromoterSeq(protein, length=1500):
 		sys.exit()
 
 	entries = set()
-
 	os.makedirs(outfolder, exist_ok=True)
 
 	# Make sure no 'old' sequences are present, that could mix with the new ones
@@ -561,6 +596,7 @@ def _loadPromoterSeq(protein, length=1500):
 	with open(infile, 'r') as f, open(os.path.join(outfolder, 'annotation.tsv'), 'w') as annotation:
 		next(f)
 		annotation.write('#Protein-Acc\tTaxID\tGenomic-Acc\tStart-Pos\tEnd-Pos\tstrand\tGene symbol\tGene name\n')
+		# Go through all proteins collected before and download the promoter sequence
 		for i, line in enumerate(f):
 			lline = line.rstrip().split('\t')
 			#lline: protein, taxid, genomicacc, start, end, strand, symbol, name
@@ -575,9 +611,6 @@ def _loadPromoterSeq(protein, length=1500):
 			else:
 				entries.add(entry)
 
-			#Dont load same sequence again - mostly for test use
-			#if os.path.isfile('PromoterSeqs_{}/{}.fasta'.format(protein, lline[6]+'_'+tax)): # / lline[0]
-				#continue
 			if VERBOSITY:
 				print('Downloading promoter sequences for hits of {}. Found: {} ({} multiple){:<6}'.format(protein, len(entries), i-len(entries)+1, ''), end='\r')
 
@@ -607,7 +640,7 @@ def _loadPromoterSeq(protein, length=1500):
 			with open(os.path.join(outfolder, '{}.fasta'.format(lline[0])), 'w') as out:
 				SeqIO.write(record, out, 'fasta')
 
-			#Complete Information in annotation file
+			#Write complete Information in annotation file
 			annotation.write('\t'.join(lline)+'\n')
 
 
@@ -621,14 +654,11 @@ def getPromoterSeqs(protein, evalue, length, genomequality, phylopath):
 	:param phylopath: filepath to the Phylogenetics workflow directory to be used
 	:creates: {prortein}_hits.txt, featuretables/*.txt, {protein}_hitfeatures.tsv, PromoterSeqs_{Protein}/*.fasta
 	'''
-	# determine/flag if protein is from phylogenetics workflow or somewhere else
 
 	taxid = taxids(genomequality)
-	#if source == 'pblast':
 	_getUniqueAccs(protein, taxid, evalue, phylopath)
-	#else: NotImplemented
-	_loadGenomeFeatures(protein, taxid) #source!
-	_extractPromoterPos(protein)	#source!
+	_loadGenomeFeatures(protein, taxid)
+	_extractPromoterPos(protein)
 	_loadPromoterSeq(protein, length)
 
 
@@ -638,17 +668,20 @@ def runClustal(protein, fastafile = ''):
 
 	:uses: PromoterSeqs_{proteins}/*.fasta
 	:param protein: protein name from phylogenetics workflow
+	:param fastafile: optional filename for a fastafile with all sequeces to align
 	:creates: {protein}_promoters_aligned.fasta
 	'''
-	# maybe only with 2nd level verbosity ?
+
 	v = ''
 	if VERBOSITY:
 		v = '-v '
 
+	# no filename provided, gather all files from standard folder
 	if not fastafile:
 		pin = os.path.join(PATH, 'PromoterSeqs_{}/*.fasta'.format(protein))
 		pout = os.path.join(PATH, '{}_promoters_aligned.fasta'.format(protein))
 
+		# collect all fasta file names
 		files = glob(pin)
 		if not len(files):
 			print('No fasta files for MSA could be found. Exiting script.')
@@ -656,11 +689,13 @@ def runClustal(protein, fastafile = ''):
 
 		cmd = 'clustalo -i - {}-o {} --force'.format(v, pout)
 
+		# cat all fles and pipe into clustal
 		p1 = subprocess.Popen(['cat']+files, stdout=subprocess.PIPE)
 		p2 = subprocess.Popen(cmd.split(), stdin=p1.stdout)
 		p2.wait()
 		p1.stdout.close()
 
+	# filename provided - check & use
 	else:
 		if os.path.isfile(fastafile):
 			pin = fastafile
@@ -701,9 +736,9 @@ def _pw_similarity(seqs, names):
 	return mat
 
 
-# The specific numbers here will have an impact on downstream results
+# The specific numbers in this function will have an impact on downstream results
 # In the context of an MSA the normalisation of the score to len(seq) is only good to keep the number between 0 & 1
-# ACTIVE: Normalisation to overlapping lenght (w/o trailing/leading gaps)
+# CURRENTLY ACTIVE: Normalisation to overlapping lenght (w/o trailing/leading gaps)
 def _similarity(seq1, seq2):
 	'''
 	Calculate similarity score for seq1 & seq2 (normalised to 0-1). Sequences should be aligned (otherwise stops at end of shorter seq).
@@ -717,6 +752,8 @@ def _similarity(seq1, seq2):
 	alphabet = ['A', 'C', 'T', 'G']
 	score = 0
 
+	# basic similarity score, identity +=1
+	# non-gap matches need to add something (otherwise a 0 is returned for sequences that have matching bases)
 	for s1, s2 in zip(seq1, seq2):
 		if s1 not in alphabet or s2 not in alphabet:
 			continue
@@ -740,7 +777,8 @@ def _similarity(seq1, seq2):
 
 def autosort(protein, drop):
 	'''
-	Takes a fasta file with multiple aligned sequences, calculates pw-similarity matrix & removes entries that have no similarity score with other entries (greedy alg.)
+	Takes a fasta file with multiple aligned sequences, calculates pw-similarity matrix
+	and removes entries that have no similarity score with other entries (greedy alg.)
 
 	:uses: {protein}_promoters_aligned.fasta
 	:param protein: protein name from phylogenetics workflow
@@ -764,7 +802,7 @@ def autosort(protein, drop):
 				#first entry is empty
 				if current:
 					seqs.append(current)
-				# NEW: >{acc}^{tax}
+				# fasta header should be: >{acc}^{tax}
 				names.append(line[1:])
 				current = ''
 				continue
@@ -776,12 +814,14 @@ def autosort(protein, drop):
 	if VERBOSITY:
 		print('Calculating pairwise similarity matrix for {:<10}.'.format(protein))
 
+	#calculate and save pw sim matrix
 	matrix = _pw_similarity(seqs, names)
 
 	with open(os.path.join(PATH, protein+'_promoters_matrix.tsv'), 'w') as out:
 		out.write('# Pairwise similarity scores for all sequences\n')
 		matrix.to_csv(path_or_buf=out, sep='\t', na_rep='N/A')
 
+	# (greedy) droppping of the accessions (=row/col) with the most NaN (=0) similarities
 	dropped = []
 	# (true/false NaN for each cell).(count per col).(count total)
 	while matrix.isnull().sum().sum():
@@ -800,12 +840,15 @@ def autosort(protein, drop):
 
 	i = 0
 
+	# make a new fasta with only the 'good' sequences
 	with open(fname, 'r') as f, open(os.path.join(PATH, protein+'_promoters_kept.fasta'), 'w') as out, open(os.path.join(PATH, protein+'_promoters_dropped.fasta'), 'w') as out2:
 		for line in f:
 			if line.startswith('>'):
 				name = line[1:].rstrip()
+				# remove manually defined accession/acc^taxid/taxid
 				if name in drop or name.split('^')[0] in drop or str(i) in drop:
 					keeping = False
+				# remove sequences depending in sim-matrix
 				else:
 					keeping = name in keep
 				i += 1
@@ -835,21 +878,18 @@ def runMegacc(protein):
 		print('Sorted MSA ({protein}_promoters_kept.fasta) is missing, please rerun step 4.\nExiting script.')
 		sys.exit()
 
-
 	# Megacc does NOT overwrite its own results, do it manually
 	if os.path.isfile(treefn):
 		os.remove(treefn)
 
-	# only with 2nd level verbosity ??
 	v = '-s '
 	if VERBOSITY:
 		v = ''
 
-
 	cmd = 'megacc -n {}-a infer_NJ_nucleotide_pair.mao -d {} -o {}'.format(v, pin, pout)
 	subprocess.call(cmd.split())
 
-	# Megacc replaces '^' with an underscore (unlike other characters that do cause problems ...)
+	# Megacc replaces '^' with an underscore (unlike other characters that do cause problems in newick files ...)
 	# use RE to replace the _ introduced by megacc & overwrite file
 	with open(treefn, 'r') as f:
 		filestr = f.read()
@@ -861,7 +901,6 @@ def runMegacc(protein):
 		out.write(filestr)
 
 
-#(opt.?) ToDo: addition of removed files as extra cluster group (+ [recursive?] grouping of dropped files)
 def treeClusters(protein, threshold):
 	'''
 	Use pw-similarity to divide a clustered MSA in different groups. Groups with only one enrty that are also adjacent in the newick tree will be remerged.
@@ -882,17 +921,21 @@ def treeClusters(protein, threshold):
 		print('pws matrix file not found. Run step 2 for this file to be created.')
 		sys.exit()
 
-	#These should be specified by a config file or flag or whatever
+	#Note: these could also be specified by the config file
 	meanfunc1 = gmean
 	meanfunc2 = gmean
 
+	# read treefile (from MEGA)
 	t = Tree(treefile)
 
-	# matrix conatins also the dropped elements, even though probably/not yet needed
+	# matrix contains also the dropped elements, even though they are not needed
 	pws = pd.read_csv(matrixfile, sep='\t', header=1, index_col=0, na_values='-')
 
 	for node in t.traverse('postorder'):
-		# Only leaves are named in a newick file!
+		# For tests
+		# node.add_features(remerged=False)
+
+		# Only leaves are pre-named in the MEGA newick file!
 		node.add_features(sim=None)
 		node.add_features(cl=None)
 
@@ -920,24 +963,29 @@ def treeClusters(protein, threshold):
 	# Cluster nodes based on similarity threshold
 	# From bottom up (meaning a cluster will contain all leaves under the point where it was created)
 	# If a node has sim lower than th, put each child-branch in a separate cluster (initially only save cluster identifiers in node.cl)
+
+	# first only assign leaves to clusters
 	i = 0
 	clusters = []
 	for node in t.traverse('postorder'):
 		if node.is_leaf():
 			continue
-
+		# branch point at which new clusters need to be generated
 		if node.sim < threshold or node.is_root():
+			# check all lower branches
 			for x in node.iter_descendants():
-				# checking just for `l.cl` will/may overwrite the first generated cluster (l.cl = 0)
+				# If a subbranch already has an assigned cluster, skip it
+				# checking with just `if l.cl` will/may overwrite the first generated cluster (l.cl = 0)
 				if any(isinstance(l.cl, int) for l in x.iter_leaves()):
 					continue
 
-				# add a list with all node instances to clusters
+				# add a list with all leaf instances to clusters & set cluster-id
 				clusters.append(x.get_leaves())
 				for leaf in clusters[i]:
 					leaf.cl = i
 				i += 1
 
+	# now spread the clusters over the whole tree (if possible)
 	for node in t.traverse('postorder'):
 		if node.is_leaf():
 			continue
@@ -956,9 +1004,6 @@ def treeClusters(protein, threshold):
 	# if a (parent) node has only children that can/are to be merged, make one new cluster out of them (recursively)
 
 	for node in t.traverse('postorder'):
-		# #Test mode
-		# node.add_features(remerged=False)
-
 		# Skip good clusters
 		if node.cl and node.cl not in tomerge:
 			continue
@@ -996,11 +1041,12 @@ def treeClusters(protein, threshold):
 					leaf.cl = check[0].cl
 					clusters[leaf.cl].append(leaf)
 
+	# Re-index the clean (=remerged) clusters
+	# its better to add these to cleanclusters in order of the tree, because then msa viewer shows them in order (top-down) of the numbers in the group-file
 	cleanclusters = []
 	merged = set()
 	used = set()
 
-	# its better to add these to cleanclusters in order of the tree, because then msa viewer shows them in order (top-down) of the numbers in the group-file
 	for node in t.iter_leaves():
 		if node.cl in used:
 			continue
@@ -1012,6 +1058,7 @@ def treeClusters(protein, threshold):
 			cleanclusters.append(tuple(clusters[node.cl]))
 			used.add(node.cl)
 
+	# Write a clusters group file
 	with open(os.path.join(PATH, protein+'_promoters_groups.csv'), 'w') as clout:
 		clout.write('# Clusters for {} determined with similarity threshhold {} on {}.\n'.format(os.path.basename(matrixfile), threshold, strftime('%x')))
 
@@ -1048,6 +1095,7 @@ def msaview(protein, categories=False, highlight=list()):
 	:uses: {protein}_promoters_groups.csv, {protein}_promoters_kept.fasta
 	:param protein: protein name from phylogenetics workflow
 	:param categories: ignored if falsy, otherwise filename to specify categories
+	:param highlight: list of exact sequences to highlight in the alignment (gaps are ignored)
 	:creates: {protein}_grouped_msa.png
 	'''
 
@@ -1084,33 +1132,40 @@ def msaview(protein, categories=False, highlight=list()):
 	clustercolors = [(166, 206, 227), (31, 120, 180), (178, 223, 138), (51, 160, 44), (251, 154, 153), (227, 26, 28),
 					 (253, 191, 111), (255, 127, 0), (202, 178, 214), (106, 61, 154), (255, 255, 179), (255, 234, 77), (177, 89, 40), (0, 0, 0)]
 
-
 	data = {}
 
+	# read in the sequences using Biopythons SeqIO & save the colors to be plotted
 	for rec in SeqIO.parse(alignmentFile, 'fasta'):
 		current = rec.name
 		data[current] = []
 		hcounter = 0
 		hcolorindex = 0
 		for i, char in enumerate(rec.seq):
+			# set color during highlighting
 			if hcounter and char != '-':
 				data[current].append(highlightcolors[hcolorindex % len(highlightcolors)])
 				hcounter -= 1
 				if hcounter == 0:
 					hcolorindex += 1
 
+			# check if the highlight sequence starts at current character
 			elif highlight and char != '-':
+				# support multiple highlight sequences
 				for high in highlight:
 					if high == str(rec.seq[i:]).replace('-', '')[:len(high)]:
 						data[current].append(highlightcolors[hcolorindex % len(highlightcolors)])
 						hcounter = len(high) - 1
+						# text output for detected position
+						if VERBOSITY:
+							print('Acc^Tax: {}\tAln-pos: {},\tSeq-Pos: {}'.format(rec.name, i, len(str(rec.seq[:i]).replace('-', ''))))
 						break
 				else:
 					data[current].append(dnacolors[char])
-
+			# save standard colors
 			else:
 				data[current].append(dnacolors[char])
 
+	# read in cluster / groupfile & save order
 	groupcolors = {}
 	order = []
 	with open(groupfn, 'r') as f:
@@ -1132,6 +1187,7 @@ def msaview(protein, categories=False, highlight=list()):
 
 			current += 1
 
+	# additonaly categories (works as groups, but allows color definition in the file)
 	category = {taxacc: (255,255,255) for taxacc in order}
 
 	if categories:
@@ -1149,8 +1205,9 @@ def msaview(protein, categories=False, highlight=list()):
 				for acctax in order:
 					if tax == acctax.split('^')[1]:
 						category[acctax] = c
+						break
 
-
+	# create picture
 	height = len(order)
 	width = len(next(iter(data.values())))
 	borders = 5
@@ -1159,6 +1216,7 @@ def msaview(protein, categories=False, highlight=list()):
 
 	for y, elem in enumerate(order):
 		for x in range(borders):
+			# categories are optional, clusters are (in this workflow) not
 			if categories:
 				im.putpixel((x, y), category[elem])
 				im.putpixel((x + width + 3 * borders, y), category[elem])
@@ -1195,8 +1253,7 @@ def _makeTree(quality_level=1):
 	#maybe interesting
 	#accs= set()
 
-	# While this file may contain multiple entries for one taxid, this should not impact the tree generation
-
+	# Read list of taxids, While this file may contain multiple entries for one taxid, this should not impact the tree generation
 	with open('refseq_taxids_l{}.txt'.format(quality_level), 'r') as infile:
 		next(infile)
 		lineages = []
@@ -1210,8 +1267,8 @@ def _makeTree(quality_level=1):
 			else:
 				print('Could not find TaxID `{}` in TaxFinder.'.format(tax))
 
+	# create tree as dictionary
 	tree = {}
-
 	for line in lineages:
 		if line[0] not in tree:
 			tree[line[0]] = set()
@@ -1221,6 +1278,7 @@ def _makeTree(quality_level=1):
 				tree[line[i]] = set()
 			tree[line[i-1]].add(line[i])
 
+	# create newick tree (string) from dictionary
 	newick = '(root^1);'
 	nodes = ['root^1']
 	while nodes:
@@ -1231,11 +1289,11 @@ def _makeTree(quality_level=1):
 			newick = newick.replace(node, '(' + ','.join(sanitizedNodes) + ')' + node)
 			nodes.extend(newnodes)
 
+	# save to file
 	with open(outfn, 'w') as outfile:
 		outfile.write(newick)
 
 	Sani.printBadChars()
-
 
 def grouptree(protein, skipclusters, genomequality):
 	'''
@@ -1259,9 +1317,12 @@ def grouptree(protein, skipclusters, genomequality):
 	if not os.path.isfile(treefn):
 		_makeTree(genomequality)
 
+	# Note this could be a parameter for the config file
 	prunefn = 'tree_to_prune.txt'
 
+	# get cluster index numbers from `skipclusters` parameter
 	drop = set(int(i) for i in skipclusters if i.isdecimal())
+	# if some elemts of `skipclusters` aren't indexes, find the index from the cluster names in the file
 	if len(drop) != len(skipclusters):
 		skipnames = [i for i in skipclusters if i.isalpha()]
 		with open(groupfn, 'r') as f:
@@ -1278,6 +1339,7 @@ def grouptree(protein, skipclusters, genomequality):
 				else:
 					i += 1
 
+	# generate the tree using phylotree
 	t = Tree(treefn, format=8)
 	# tree, treefile, prune, sqrt = False, collapse = True, show_empty_species = True, startnode = None, countTotal = False
 	TM = Clusters(tree=t, treefile=treefn, prune=prunefn, filename=groupfn, dropclusters=drop, show_empty_species=False, usegrey=False)
@@ -1285,7 +1347,8 @@ def grouptree(protein, skipclusters, genomequality):
 
 
 def motifAnalysis(protein, skipclusters):
-	'''Generate motifs of each group within the MSA. This function will split the alignment of each given group in the msa into highly conserved parts, thene generate motifs (& seqlogo) for these split groups.
+	'''Generate motifs for each group within the MSA.
+	This function will split the alignment of each given group in the msa into highly conserved parts, then generate motifs (& seqlogo) for these split groups.
 
 	:uses: {protein}_promoters_groups.csv, {protein}_promoters_aligend.fasta
 	:param protein: protein name from phylogenetics workflow
@@ -1308,6 +1371,7 @@ def motifAnalysis(protein, skipclusters):
 
 	skipnames = [i for i in skipclusters if i.isalpha()]
 
+	# read group file
 	groups = {}
 	with open(groupfn, 'r') as f:
 		i = 0
@@ -1447,7 +1511,7 @@ def motifAnalysis(protein, skipclusters):
 	os.makedirs(os.path.join(PATH, motiffolder))
 
 	for name, motif in motifdict.items():
-		#TODO: the heigth (bit value) in logos doesnt seem quite correct currently
+		# Note: the hieght (log-scale) of the logos seems incorrect (never reaches 2, even if completely conserved)
 		motif.weblogo(os.path.join(PATH, motiffolder, '{}_{}_seqlogo.png'.format(protein, name)))
 
 	for name, gr in groups.items():
@@ -1478,7 +1542,9 @@ def motifAnalysis(protein, skipclusters):
 			out.write(motifs.write(grmotifs, 'jaspar'))
 
 
-#opt Todo's: implement guessing &/ automatic detection of isoform names
+# Function to analyse which isoforms (based in gene symbol) are present/predominant in the determined groups.
+# Currently the possible gene symbols for each protein need to be provided
+# This function requires the annotation for all sequences/acc. proteins (automatically obtained if downlaoded by this script)
 def clusterisoforms(protein, skipclusters, isoforms, guess=False):
 	'''
 	Determine the protein isoform composition of all groups.
@@ -1516,6 +1582,7 @@ def clusterisoforms(protein, skipclusters, isoforms, guess=False):
 	names = []
 	guessed = {}
 
+	# read in annotation for all sequences
 	with open(annotationfn, 'r') as f:
 		next(f)
 		for line in f:
@@ -1529,10 +1596,11 @@ def clusterisoforms(protein, skipclusters, isoforms, guess=False):
 			else:
 				data[lline[0]] = None
 
-	# guessing
+	# Not yet implemented: guessing of possible isoforms
 	# find common associated word groups in `names`
 	# then loop through `guessed` and use above info to (try to) match a name to one of the groups, overwrite data[acc]
 
+	# read in groupfile
 	groups = {}
 	skipnames = [i for i in skipclusters if i.isalpha()]
 	with open(groupfn, 'r') as f:
@@ -1572,6 +1640,7 @@ def clusterisoforms(protein, skipclusters, isoforms, guess=False):
 
 			i += 1
 
+	# count the isoforms present in each group
 	counts = {}
 	for name, gr in groups.items():
 		isos = []
@@ -1582,14 +1651,15 @@ def clusterisoforms(protein, skipclusters, isoforms, guess=False):
 		counts[name] = {i: isos.count(i.lower()) / l for i in isoforms}
 		counts[name].update({None: isos.count(None) / l})
 
-
+	# output as file
 	with open(outfn, 'w') as out:
 		out.write('#Isoform distribution of clusters. Known Isoforms are: {}; other genesymbols are counted as `None`.\n'.format(', '.join(isoforms)))
 		for name in sorted(groups.keys()):
 			out.write('>{}\n'.format(name))
 			out.write(', '.join('{}: {}'.format(k, v) for k, v in counts[name].items()) + '\n\n')
 
-	## Tree visulisation ##
+
+	## Tree visulisation oupput ##
 
 	t = Tree(treefile)
 
@@ -1782,8 +1852,6 @@ if __name__ == '__main__':
 	if args.init:
 		init()
 		sys.exit()
-
-	# check if init has been run
 
 	CATCACHE = category_cache()
 
