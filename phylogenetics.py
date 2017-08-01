@@ -145,7 +145,10 @@ class ConfigReader():
 				if not line or line.startswith('#'):
 					continue
 
-				if mode == 'taxa_to_show':
+				if line in modes:
+					mode = modes[line]
+
+				elif mode == 'taxa_to_show':
 					self.taxa_to_show.append(line)
 
 				elif mode == 'colors':
@@ -158,8 +161,6 @@ class ConfigReader():
 					else:
 						raise ValueError('Error in heatmap_config.txt. Unknown clustering method: {}!'.format(line))
 
-				elif line in modes:
-					mode = modes[line]
 				else:
 					raise ValueError('Error in heatmap_config.txt. No mode selected and {} found!'.format(line))
 
