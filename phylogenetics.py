@@ -15,6 +15,7 @@ from multiprocessing import cpu_count
 from taxfinder import TaxFinder
 from collections import defaultdict
 
+
 class ConfigReader():
 	'''
 	The ConfigReader shall read the `limits.txt` and `proteinlist.txt` and return the contents in different formats upon request.
@@ -27,6 +28,7 @@ class ConfigReader():
 
 		self._readProteinlist()
 		self._readLimits()
+		self._readHeatmapValues()
 
 
 	def _readLimits(self):
@@ -38,7 +40,7 @@ class ConfigReader():
 			self.limitsDict = {}
 			for line in f:
 				line = line.split('#')[0].rstrip()
-				if line == '':
+				if not line:
 					continue
 				lline = line.split()
 				try:
@@ -122,6 +124,75 @@ class ConfigReader():
 
 		return ret
 
+
+	def _readHeatmapValues(self):
+		'''
+		Reads `heatmap_config.txt` and saves the content as lists and dicts to be used by the get* methods.
+		'''
+
+		with open('heatmap_config.txt', 'r') as f:
+			self.taxa_to_show = []
+			self.hm_colors = {}
+			self.clustering_method = ''
+
+			mode = ''
+			modes = {'TAXA_TO_SHOW': 'taxa_to_show', 'COLORS': 'colors', 'ALGO': 'clustering'}
+
+			clustering_methods = {'single', 'complete', 'average', 'weighted', 'centroid', 'median', 'ward'}
+
+			for line in f:
+				line = line.rstrip()
+				if not line or line.startswith('#'):
+					continue
+
+				if mode == 'taxa_to_show':
+					self.taxa_to_show.append(line)
+
+				elif mode == 'colors':
+					lline = line.split()
+					self.hm_colors[lline[0]] = lline[1]
+
+				elif mode == 'clustering':
+					if line in clustering_methods:
+						self.clustering_method = line
+					else:
+						raise ValueError('Error in heatmap_config.txt. Unknown clustering method: {}!'.format(line))
+
+				elif line in modes:
+					mode = modes[line]
+				else:
+					raise ValueError('Error in heatmap_config.txt. No mode selected and {} found!'.format(line))
+
+
+	def getHMTaxa(self):
+		'''
+		Returns a list with the taxa to show.
+
+		:returns: A list of taxa
+		'''
+
+		return self.taxa_to_show
+
+
+	def getHMColors(self):
+		'''
+		Returns a dict with the colors in the form {'letter': 'color_code', ...}
+
+		:returns: A dict with colors
+		'''
+
+		return self.hm_colors
+
+
+	def getHMClustering(self):
+		'''
+		Returns the clustering method of choice
+
+		:returns: A string with the clustering method
+		'''
+
+		return self.clustering_method
+
 	# end ConfigReader
 
 
@@ -199,6 +270,10 @@ def init():
 
 	if not os.path.isfile('tree_to_prune.txt'):
 		with open('tree_to_prune.txt', 'w') as out, open(os.path.join(origDir, 'tree_to_prune.txt'), 'r') as f:
+			out.write(f.read())
+
+	if not os.path.isfile('heatmap_config.txt'):
+		with open('heatmap_config.txt', 'w') as out, open(os.path.join(origDir, 'heatmap_config.txt'), 'r') as f:
 			out.write(f.read())
 
 	if not os.path.isfile('heatmapTemplate.html'):
@@ -536,8 +611,7 @@ def makeNewick():
 					newick = newick.replace(node, '(' + ','.join(sanitizedNodes) + ')' + node)
 					nodes.extend(newnodes)
 
-		with open(outfn, 'w') as outfile:
-			outfile.write(newick)
+		open(outfn, 'w').write(newick)
 
 	Sani.printBadChars()
 
@@ -600,8 +674,7 @@ def treeAttributes():
 
 	proteinlist = sorted(list(CR.getProteinNames()))
 
-	with open('trees/general.tre', 'r') as f:
-		tree = f.read()
+	tree = open('trees/general.tre', 'r').read()
 
 	allElements = _getTreeElements(tree, returnSet = False, splitting = True)
 
@@ -846,7 +919,6 @@ def similarityMatrix():
 			out.write(names[i] + '\t' + '\t'.join(map(str, line)) + '\n')
 
 
-### This function needs some arguments, like the taxa to use, the colors, the clustering/linkage algorithm etc.
 def intHeatmap():
 	'''
 	Creates an interactive heatmap as html file with javascript.
@@ -855,52 +927,11 @@ def intHeatmap():
 	:creates: out.html
 	'''
 
-	return True
+	taxaToCheck = CR.getHMTaxa()
+	colors = CR.getHMColors()
+	method = CR.getHMClustering()
 
-	taxaToCheck = [
-	'Homo_sapiens_(Mammal)^9606',
-	'Rattus_norvegicus_(Mammal)^10116',
-	'Bos_taurus_(Mammal)^9913',
-	'Gallus_gallus_(Bird)^9031',
-	'Chelonia_mydas_(Turtle)^8469',
-	'Python_bivittatus_(Snake)^176946',
-	'Xenopus_laevis_(Frog)^8355',
-	'Notothenia_coriiceps_(Fish)^8208',
-	'Salmo_salar_(Fish)^8030',
-	'Danio_rerio_(Fish)^7955',
-	'Branchiostoma_floridae_(Lancelet)^7739',
-	'Oikopleura_dioica_(Tunicate)^34765',
-	'Strongylocentrotus_purpuratus_(Sea_urchin)^7668',
-	'Limulus_polyphemus_(Horseshoe_crab)^6850',
-	'Drosophila_melanogaster_(Fly)^7227',
-	'Caenorhabditis_elegans_(Nematode)^6239',
-	'Wuchereria_bancrofti_(Nematode)^6293',
-	'Trichinella_spiralis_(Nematode)^6334',
-	'Helobdella_robusta_(Annelid)^6412',
-	'Saccoglossus_kowalevskii_(Mollusc)^10224',
-	'Aplysia_californica_(Mollusc)^6500',
-	'Crassostrea_gigas_(Mollusc)^29159',
-	'Lingula_anatina_(Brachiopod)^7574',
-	'Schistosoma_haematobium_(Platyhelminthes)^6185',
-	'Echinococcus_granulosus_(Platyhelminthes)^6210',
-	'Nematostella_vectensis_(Cnidaria)^45351',
-	'Suberites_domuncula_(Sponge)^55567',
-	'Amphimedon_queenslandica_(Sponge)^400682',
-	'Allomyces_macrogynus_(Fungi)^28583',
-	'Capronia_epimyces_(Fungi)^43228',
-	'Mortierella_verticillata_(Fungi)^78898',
-	'Saccharomyces_cerevisiae_(Fungi)^4932',
-	'Arabidopsis_thaliana_(Plant)^3702',
-	'Volvox_carteri_(Plant)^3067',
-	'Chlorella_variabilis_(Plant)^554065',
-	'Acanthamoeba_castellanii_(Amoeba)^5755']
-
-	proteinsToCheck = []
-
-	colors = {'g': '#00cc00', 'r': '#cc0000', 'c': '#00cccc', 'b': '#0000cc', 'm': '#cc00cc'}
-
-	if not proteinsToCheck:
-		proteinsToCheck = sorted(list(CR.getProteinNames()))
+	proteinsToCheck = sorted(list(CR.getProteinNames()))
 
 	taxids = {}
 	tickTaxons = []
@@ -922,7 +953,7 @@ def intHeatmap():
 
 	pdmatrix = pd.DataFrame(matrix, columns = tickTaxons, index = tickProteins)
 
-	linkage = clusHier.linkage(pdmatrix, method='centroid')
+	linkage = clusHier.linkage(pdmatrix, method=method)
 	dendro = clusHier.dendrogram(linkage, labels = tickProteins, no_plot = True, distance_sort = True)
 
 	data = []
@@ -953,13 +984,11 @@ def intHeatmap():
 	adataPrintable = repr(list(zip(*matrix))).replace('(', '[').replace(')', ']')
 	aproteinsPrintable = repr(proteinsToCheck)
 
-	with open('heatmapTemplate.html', 'r') as temp:
-		template = temp.read()
+	template = open('heatmapTemplate.html', 'r').read()
 
-	f = template.replace('{CWIDTH}', width).replace('{CHEIGHT}', height).replace('{CDATA}', cdataPrintable).replace('{TAXA}', taxaPrintable).replace('{CPROTEINS}', cproteinsPrintable).replace('{CLUSTER}', clusterPrintable).replace('{ADATA}', adataPrintable).replace('{APROTEINS}', aproteinsPrintable)
+	f = template.format(CWIDTH=width, CHEIGHT=height, CDATA=cdataPrintable, TAXA=taxaPrintable, CPROTEINS=cproteinsPrintable, CLUSTER=clusterPrintable, ADATA=adataPrintable, APROTEINS=aproteinsPrintable)
 
-	with open('out.html', 'w') as out:
-		out.write(f)
+	open('out.html', 'w').write(f)
 
 
 # adapted from similarityMatrix
@@ -1132,7 +1161,7 @@ tasks = {'blast': ('run Blast', runBlast),
 'map': ('create hit mapping diagrams for each protein', showBlastMapping),
 'intheat': ('create an interactive heatmap (html)', intHeatmap),
 'matrix': ('create a similarity matrix of all proteins', similarityMatrix),
-'crosshits': ('create files with all blast crosshits of cretain proteins', getCrosshits),
+'crosshits': ('create files with all blast crosshits of certain proteins', getCrosshits),
 'crosshist': ('creates Histograms of e-value distribution for crosshits', crossHistograms)}
 
 
