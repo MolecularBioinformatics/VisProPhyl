@@ -855,6 +855,8 @@ def intHeatmap():
 	:creates: out.html
 	'''
 
+	return True
+
 	taxaToCheck = [
 	'Homo_sapiens_(Mammal)^9606',
 	'Rattus_norvegicus_(Mammal)^10116',
