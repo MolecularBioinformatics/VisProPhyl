@@ -1028,7 +1028,7 @@ def getCrosshits(doOnly = None, crosscrosshits = False):
 	os.makedirs('crosshits', exist_ok=True)
 
 	values = {}
-	#set is important! the combined tables dont have unique entries
+	# set is important! the combined tables dont have unique entries
 	taxids = defaultdict(set)
 
 	for name in li:
@@ -1048,7 +1048,7 @@ def getCrosshits(doOnly = None, crosscrosshits = False):
 					evalue = 0
 				acc = lline[1]
 				tax = lline[0]
-				#Adding TaxID for later use, Acc-IDs are already unique (and implicate tax-id) so this should change anything
+				# Adding TaxID for later use, Acc-IDs are already unique (and implicate tax-id) so this should change anything
 				values[name][evalue].add(acc+'^'+tax)
 				if crosscrosshits:
 					taxids[tax].add(acc)
@@ -1056,8 +1056,8 @@ def getCrosshits(doOnly = None, crosscrosshits = False):
 	names = sorted(values.keys())
 
 	for i, name1 in enumerate(names):
-		for name2 in names[i:]: #skips symmetric combinations
-			if name1 == name2:  #dont need that either
+		for name2 in names[i:]: # skips symmetric combinations
+			if name1 == name2:  # don't need to compare with itself
 				continue
 			acc1 = set()
 			acc2 = set()
@@ -1067,7 +1067,7 @@ def getCrosshits(doOnly = None, crosscrosshits = False):
 				acc1.update(values[name1][evalue])
 				acc2.update(values[name2][evalue])
 				inter = acc1.intersection(acc2)
-				common[evalue] = inter - oldhits #only write those hits that are new for this evalue
+				common[evalue] = inter - oldhits # only write those hits that are new for this evalue
 				oldhits.update(inter)
 
 			with open("crosshits/{0}-{1}.tsv".format(name1, name2), "w") as outf:
@@ -1111,7 +1111,7 @@ def crossHistograms():
 	data = {}
 
 	for c in combos:
-		with open('crosshits/'+c+'.tsv', 'r') as f:
+		with open('crosshits/{}.tsv'.format(c), 'r') as f:
 			next(f)
 			lowest = 0
 			d = np.array([range(151), [0]*151], dtype=np.int)
@@ -1120,7 +1120,10 @@ def crossHistograms():
 				if not lowest and int(num):
 					lowest = int(ev)
 				d[1][int(ev)] = int(num)
-			highest = max([ev for ev, n in enumerate(d[1]) if n]) #highest ev with non-0 crosshits
+			try:
+				highest = max([ev for ev, n in enumerate(d[1]) if n]) # highest ev with non-0 crosshits
+			except ValueError:
+				highest = 0
 			data[c] = (lowest, highest, d)
 
 	for combo in combos:
@@ -1129,12 +1132,18 @@ def crossHistograms():
 
 		mi = data[combo][0] #(0) 30 or higher
 		ma = data[combo][1] #max 150
+		if len(values[1][mi:ma]) > 0:
+			mean = int(np.mean(values[1][mi:ma]))
+			median = int(np.median(values[1][mi:ma]))
+		else:
+			mean = '-'
+			median = '-'
 
 		text = '''Distribution
     min: {}
     max: {}
-    average: {:.0f}
-    median: {:.0f}'''.format(mi, ma, np.mean(values[1][mi:ma]), np.median(values[1][mi:ma]))
+    average: {}
+    median: {}'''.format(mi, ma, mean, median)
 
 		fig = plt.figure(1, figsize=(12, 6))
 		ax = fig.add_subplot(1, 1, 1)
