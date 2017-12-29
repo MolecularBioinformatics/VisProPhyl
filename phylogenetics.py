@@ -197,15 +197,6 @@ class ConfigReader():
 	# end ConfigReader
 
 
-# We need objects of these two classes for most of the functions, so we initialize them here already
-# TaxFinder takes some seconds to load, so this is, what makes loading this module slow.
-TF = TaxFinder()
-try:
-	CR = ConfigReader()
-except IOError:
-	CR = None
-
-
 def _myGetBasename(name):
 	'''
 	Strips the path and the extension from a filename. E.g. /a/path/to/file.png -> file
@@ -1235,6 +1226,14 @@ if __name__ == '__main__':
 		parser.print_help()
 		sys.exit()
 
+	# We need objects of these two classes for most of the functions, so we initialize them here already
+	# TaxFinder takes some seconds to load, so this is, what makes loading this module slow.
+	TF = TaxFinder()
+	try:
+		CR = ConfigReader()
+	except IOError:
+		CR = None
+
 	if args.all:
 		runWorkflow('parse')
 	elif args.blast:
@@ -1243,30 +1242,35 @@ if __name__ == '__main__':
 		try:
 			a = int(args.startfrom)
 		except ValueError:
-			if args.startfrom in tasknames:
-				runWorkflow(args.startfrom)
-			else:
+			try:
+				a = tasknames.index(args.startfrom)
+			except ValueError:
 				parser.print_help()
+		if a < len(tasknames):
+			runWorkflow(tasknames[a])
 		else:
-			if a < len(tasknames):
-				runWorkflow(tasknames[a])
-			else:
-				parser.print_help()
+			parser.print_help()
 	elif args.only:
 		try:
 			a = int(args.only)
 		except ValueError:
-			if args.only in tasknames:
-				task = tasks[args.only][1]
-				task()
-			else:
+			try:
+				a = tasknames.index(args.only)
+			except ValueError:
 				parser.print_help()
+		if a < len(tasknames):
+			task = tasks[tasknames[a]][1]
+			task()
 		else:
-			if a < len(tasknames):
-				task = tasks[tasknames[a]][1]
-				task()
-			else:
-				parser.print_help()
+			parser.print_help()
 	else:
 		print('This should not happen!')
 		parser.print_help()
+else:
+	# We need objects of these two classes for most of the functions, so we initialize them here already
+	# TaxFinder takes some seconds to load, so this is, what makes loading this module slow.
+	TF = TaxFinder()
+	try:
+		CR = ConfigReader()
+	except IOError:
+		CR = None
