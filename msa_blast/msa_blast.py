@@ -22,7 +22,7 @@ def get_entries(filename, cutoff, TF=None):
 	hitfrom = None
 	hitto = None
 
-	with open(sys.argv[1]) as xml:
+	with open(filename) as xml:
 		for line in xml:
 			if '<accession>' in line:
 				acc = line.strip().replace('<accession>', '').replace('</accession>', '')
