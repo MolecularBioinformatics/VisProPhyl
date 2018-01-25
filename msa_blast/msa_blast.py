@@ -3,6 +3,7 @@
 mail = '' # Enter your email address here!
 
 import sys
+import os
 from Bio import Entrez, SeqIO
 try:
 	from taxfinder import TaxFinder
@@ -140,7 +141,7 @@ if __name__ == '__main__':
 	parser = argparse.ArgumentParser(description='Makes multi-fasta file suitable for multiple sequence alignment from Blast result. Expects a blast result as single file XML2 format (must include taxid!) and needs internet connection.\nThe TaxFinder module might be very usefull although it is not necessary.')
 
 	parser.add_argument('xml', help='The Blast result as single file XML2 format (outfmt 16).')
-	parser.add_argument('-m', '--mail', help='Please state your (real!) email address. Alternatively, you can hard-code it in the script on line 3.')
+	parser.add_argument('-m', '--mail', help='Please state your (real!) email address. Alternatively, you can hard-code it in the script on line 3 or define the environment variable BLASTMAIL.')
 	parser.add_argument('-o', '--outfile', default='', help='Outfile name. Leave empty to write to stdout.')
 	parser.add_argument('-s', '--strip', action='store_true', help='If given, stop codons are stripped off.')
 	parser.add_argument('-e', '--evalue', type=float, default=1e-30, help='Evalue cutoff for including entries')
@@ -148,6 +149,8 @@ if __name__ == '__main__':
 
 	args = parser.parse_args()
 
+	if 'BLASTMAIL' in os.environ:
+		mail = os.environ['BLASTMAIL']
 	if args.mail:
 		mail = args.mail
 	if not mail:
