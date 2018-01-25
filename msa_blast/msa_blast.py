@@ -1,10 +1,6 @@
 #!/usr/bin/env python3
 
-
-### config:
 mail = '' # Enter your email address here!
-cutoff = 1e-30 # E-value cutoff
-
 
 import sys
 from Bio import Entrez, SeqIO
@@ -14,149 +10,162 @@ except ImportError:
 	pass
 
 
-if mail:
-	mail_warning = ''
-else:
-	mail_warning = '\n\033[1;31mPlease change your email address in the script before running!\033[0;0m'
+def get_entries(filename, cutoff, TF=None):
 
-if len(sys.argv) < 2 or sys.argv[1].startswith('-'):
-	print('''Makes multi-fasta file suitable for multiple sequence alignment. Expects a
-blastresult file in XML format (the new xml format; must include taxid!) and
-needs internet connection.{}
-Dependecies: BioPython and optionally TaxFinder
-Usage:
-python3 {} blastresult.xml'''.format(mail_warning, __file__))
-	sys.exit()
+	entries = {}
 
-if not mail:
-	print(mail_warning.strip())
-	sys.exit()
+	acc = None
+	taxid = None
+	sciname = None
+	evalue = None
+	hitfrom = None
+	hitto = None
 
-try:
-	TF = TaxFinder()
-except NameError:
-	TF = None
-	print('Taxfinder module not found. Scripts continues, but unifying subspecies will not work.')
+	with open(sys.argv[1]) as xml:
+		for line in xml:
+			if '<accession>' in line:
+				acc = line.strip().replace('<accession>', '').replace('</accession>', '')
 
-Entrez.email = mail
+			elif not acc:
+				continue
 
-entries = {}
+			elif '<taxid>' in line:
+				taxid = int(line.strip().replace('<taxid>', '').replace('</taxid>', ''))
 
-acc = None
-taxid = None
-sciname = None
-evalue = None
-
-with open(sys.argv[1]) as xml:
-	for line in xml:
-		if '<accession>' in line:
-			acc = line.strip().replace('<accession>', '').replace('</accession>', '')
-
-		elif not acc:
-			continue
-
-		elif '<taxid>' in line:
-			taxid = int(line.strip().replace('<taxid>', '').replace('</taxid>', ''))
-
-			if TF:
-				taxid = TF.getSpeciesFromSubspecies(taxid)
+				try:
+					taxid = TF.getSpeciesFromSubspecies(taxid)
+				except ValueError:
+					print('Taxid {} not found!'.format(taxid), file=sys.stderr)
+				except AttributeError:
+					pass
 
 
-		elif '<sciname>' in line:
-			sciname = line.strip().replace('<sciname>', '').replace('</sciname>', '')
+			elif '<sciname>' in line:
+				sciname = line.strip().replace('<sciname>', '').replace('</sciname>', '')
 
-		elif '<evalue>' in line:
-			evalue = float(line.strip().replace('<evalue>', '').replace('</evalue>', ''))
+			elif '<evalue>' in line:
+				evalue = float(line.strip().replace('<evalue>', '').replace('</evalue>', ''))
 
-			if taxid not in entries or entries[taxid][1] > evalue:
-				entries[taxid] = (acc, evalue, sciname)
+			elif '<hit-from>' in line:
+				hitfrom = int(line.strip().replace('<hit-from>', '').replace('</hit-from>', ''))
 
-			acc = None
-			taxid = None
-			sciname = None
-			evalue = None
+			elif '<hit-to>' in line:
+				hitto = int(line.strip().replace('<hit-to>', '').replace('</hit-to>', ''))
 
-total = len(entries)
-cdss = {}
+				if hitto < hitfrom:
+					hitto, hitfrom = hitfrom, hitto
 
-with open('all_seqs.fasta', 'w') as outfile:
+				if evalue < cutoff and (taxid not in entries or entries[taxid][1] > evalue):
+					entries[taxid] = (acc, evalue, sciname, hitfrom, hitto)
+
+				acc = None
+				taxid = None
+				sciname = None
+				evalue = None
+
+	return entries
+
+
+def dl_sequences(entries, strip, title):
+
+	out = []
+	total = len(entries)
+	cdss = {}
+
 	for current, taxid in enumerate(entries, start=1):
+		print('\r' + ' '*75, end='\r', flush=True, file=sys.stderr)
 
-		print(' '*75, end='\r', flush=True)
+		print('Running seq {:3d} of {:3d}: {:<15}'.format(current, total, entries[taxid][0]), end='', flush=True, file=sys.stderr)
 
-		print('Running seq {:3d} of {:3d}: {:<15}'.format(current, total, entries[taxid][0]), end='', flush=True)
-
-		if entries[taxid][1] > cutoff:
-			continue
-
-		print('dl:', end='', flush=True)
+		print('dl:', end='', flush=True, file=sys.stderr)
 		try:
 			handle = Entrez.efetch(db='nuccore', id=entries[taxid][0], rettype='gb', retmode='text')
 		except Exception as err:
-			print('\r{}: {}'.format(entries[taxid][0], err))
+			print('\r{}: {}'.format(entries[taxid][0], err), file=sys.stderr)
 			continue
 
-		print('ok parse:', end='', flush=True)
+		print('ok parse:', end='', flush=True, file=sys.stderr)
 		seqobj = SeqIO.parse(handle, 'gb')
-		print('ok', end='\r', flush=True)
 		record = next(seqobj)
-		sequence = str(record._seq)
+		sequence = record._seq
 
-		featurecds = []
-		sequences = {}
-		taxids = {}
+		featurecds = None
 
 		for feature in record.features:
 			if feature.type == 'CDS':
-				name = feature.qualifiers['product'][0]
-				start = int(feature.location._start)
-				end = int(feature.location._end)
-				featurecds.append((name, start, end))
+				try:
+					name = feature.qualifiers['product'][0]
+					start = int(feature.location._start)
+					end = int(feature.location._end)
+				except (AttributeError, KeyError):
+					continue
 
-		if len(featurecds) == 0:
-			print('\r{}: No CDS{}'.format(entries[taxid][0], ' '*40))
+				if start <= entries[taxid][3] and end >= entries[taxid][4]:
+					featurecds = (name, start, end)
+					break
+		else:
+			print('\r{}: No CDS{}'.format(entries[taxid][0], ' '*40), file=sys.stderr)
 			continue
 
-		if len(featurecds) > 1:
-			cdss[entries[taxid][0]] = tuple(featurecds)
-			sequences[entries[taxid][0]] = sequence
-			taxids[entries[taxid][0]] = taxid
+		cds = str(sequence[start:end])
+
+		if not cds[:3] == 'ATG' or not cds[-3:] in ['TAA', 'TGA', 'TAG']:
+			if cds[-3:] == 'CAT' and cds[:3] in ['CTA', 'TCA', 'TTA']:
+				cds = str(sequence[start:end].reverse_complement())
+			else:
+				print('\r{}: No ATG or Stop codon found!{}'.format(entries[taxid][0], ' '*30), file=sys.stderr)
+				continue
+
+		if len(cds) % 3:
+			print('\r{}: Possible frameshit!{}'.format(entries[taxid][0], ' '*40), file=sys.stderr)
 			continue
 
-		cds = sequence[start:end]
-		if not cds.startswith('ATG') or not cds[-3:] in ['TAA', 'TGA', 'TAG']:
-			print('\r{}: No ATG or Stop codon found!{}'.format(entries[taxid][0], ' '*30))
-			continue
+		if strip and cds[-3:] in ['TAA', 'TGA', 'TAG']:
+			cds = cds[:-3]
 
-		outfile.write('>{}_{}\n{}\n'.format(entries[taxid][0], entries[taxid][2].replace(' ', '-'), cds))
+		fasta_head = '>{}_{}'.format(entries[taxid][0], entries[taxid][2].replace(' ', '-'))
+		if title:
+			fasta_head = fasta_head[:title]
 
-print('')
+		out.append('{}\n{}'.format(fasta_head, cds))
 
-if cdss:
-	print('There were accessions with multiple cds:')
-	for acc in cdss:
-		print(acc)
-		if len(cdss[acc]) > 20:
-			print('More than 20 CDS found. Please investigate yourself.')
-			continue
+	print('', file=sys.stderr)
 
-		for i, feature in cdss[acc]:
-			print('{:2d}: {}'.format(i, feature[0]))
+	return '\n'.join(out)
 
-		try:
-			chosen = int(input('Which one do you want (x for none)? '))
-		except ValueError:
-			print('Chose none.')
-			continue
 
-		print('Chose {}'.format(cdss[acc][chosen][0]))
+if __name__ == '__main__':
+	import argparse
 
-		start = cdss[acc][chosen][1]
-		end = cdss[acc][chosen][2]
+	parser = argparse.ArgumentParser(description='Makes multi-fasta file suitable for multiple sequence alignment from Blast result. Expects a blast result as single file XML2 format (must include taxid!) and needs internet connection.\nThe TaxFinder module might be very usefull although it is not necessary.')
 
-		cds = sequences[acc][start:end]
-		if not cds.startswith('ATG') or not cds[-3:] in ['TAA', 'TGA', 'TAG']:
-			print('No ATG or Stop codon found!'.format(entries[taxid][0]))
-			continue
+	parser.add_argument('xml', help='The Blast result as single file XML2 format (outfmt 16).')
+	parser.add_argument('-m', '--mail', help='Please state your (real!) email address. Alternatively, you can hard-code it in the script on line 3.')
+	parser.add_argument('-o', '--outfile', default='', help='Outfile name. Leave empty to write to stdout.')
+	parser.add_argument('-s', '--strip', action='store_true', help='If given, stop codons are stripped off.')
+	parser.add_argument('-e', '--evalue', type=float, default=1e-30, help='Evalue cutoff for including entries')
+	parser.add_argument('-t', '--title', type=int, default=0, help='Shorten the title of the entries to this length. Default is 0 (no shortening).')
 
-		outfile.write('>{}_{}\n{}\n'.format(entries[taxids[acc]][0], entries[taxids[acc]][2].replace(' ', '-'), cds))
+	args = parser.parse_args()
+
+	if args.mail:
+		mail = args.mail
+	if not mail:
+		print('\033[1;31mPlease change your email address in the script before running!\033[0;0m', file=sys.stderr)
+		sys.exit()
+
+	try:
+		TF = TaxFinder()
+	except NameError:
+		TF = None
+		print('Taxfinder module not found. Script continues, but unifying subspecies will not work.', file=sys.stderr)
+
+	Entrez.email = mail
+
+	entries = get_entries(args.xml, args.evalue, TF)
+	fasta = dl_sequences(entries, args.strip, args.title)
+
+	if args.outfile:
+		open(args.outfile, 'w').write(fasta)
+	else:
+		print(fasta)
