@@ -106,7 +106,7 @@ def dl_sequences(entries, strip, title):
 					featurecds = (name, start, end)
 					break
 		else:
-			print('\r{}: No CDS{}'.format(entries[taxid][0], ' '*40), file=sys.stderr)
+			print('\r{}: No CDS{}'.format(entries[taxid][0], ' '*40), file=logfile)
 			continue
 
 		cds = str(sequence[start:end])
@@ -115,15 +115,15 @@ def dl_sequences(entries, strip, title):
 			if cds[-3:] == 'CAT' and cds[:3] in ['CTA', 'TCA', 'TTA']:
 				cds = str(sequence[start:end].reverse_complement())
 			else:
-				print('\r{}: No ATG or Stop codon found! Sequence will be omitted{}'.format(entries[taxid][0], ' '*30), file=sys.stderr)
+				print('\r{}: No ATG or Stop codon found! Sequence will be omitted{}'.format(entries[taxid][0], ' '*30), file=logfile)
 				continue
 
 		if len(cds) % 3:
-			print('\r{}: Possible frameshit! Sequence will be omitted{}'.format(entries[taxid][0], ' '*40), file=sys.stderr)
+			print('\r{}: Possible frameshit! Sequence will be omitted{}'.format(entries[taxid][0], ' '*40), file=logfile)
 			continue
 
 		if re.search(r'[^ACGT]', cds):
-			print('\r{}: Non canonical DNA base! Sequence will be included in output.{}'.format(entries[taxid][0], ' '*40), file=sys.stderr)
+			print('\r{}: Non canonical DNA base! Sequence will be included in output.{}'.format(entries[taxid][0], ' '*40), file=logfile)
 
 		if strip and cds[-3:] in ['TAA', 'TGA', 'TAG']:
 			cds = cds[:-3]
@@ -134,7 +134,7 @@ def dl_sequences(entries, strip, title):
 
 		out.append('{}\n{}'.format(fasta_head, cds))
 
-	print('', file=sys.stderr)
+	print('', file=logfile)
 
 	return '\n'.join(out)
 
@@ -147,6 +147,7 @@ if __name__ == '__main__':
 	parser.add_argument('xml', help='The Blast result as single file XML2 format (outfmt 16).')
 	parser.add_argument('-m', '--mail', help='Please state your (real!) email address. Alternatively, you can hard-code it in the script on line 3 or define the environment variable BLASTMAIL.')
 	parser.add_argument('-o', '--outfile', default='', help='Outfile name. Leave empty to write to stdout.')
+	parser.add_argument('-l', '--logfile', default='', help='Logfile name. Leave empty to write to stderr.')
 	parser.add_argument('-s', '--strip', action='store_true', help='If given, stop codons are stripped off.')
 	parser.add_argument('-e', '--evalue', type=float, default=1e-30, help='Evalue cutoff for including entries')
 	parser.add_argument('-t', '--title', type=int, default=0, help='Shorten the title of the entries to this length. Default is 0 (no shortening).')
@@ -168,6 +169,11 @@ if __name__ == '__main__':
 		print('Taxfinder module not found. Script continues, but unifying subspecies will not work.', file=sys.stderr)
 
 	Entrez.email = mail
+
+	if args.logfile:
+		logfile=open(args.logfile, 'w')
+	else:
+		logfile=sys.stderr
 
 	entries = get_entries(args.xml, args.evalue, TF)
 	fasta = dl_sequences(entries, args.strip, args.title)
