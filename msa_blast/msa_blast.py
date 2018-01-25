@@ -4,6 +4,7 @@ mail = '' # Enter your email address here!
 
 import sys
 import os
+import re
 from Bio import Entrez, SeqIO
 try:
 	from taxfinder import TaxFinder
@@ -114,12 +115,15 @@ def dl_sequences(entries, strip, title):
 			if cds[-3:] == 'CAT' and cds[:3] in ['CTA', 'TCA', 'TTA']:
 				cds = str(sequence[start:end].reverse_complement())
 			else:
-				print('\r{}: No ATG or Stop codon found!{}'.format(entries[taxid][0], ' '*30), file=sys.stderr)
+				print('\r{}: No ATG or Stop codon found! Sequence will be omitted{}'.format(entries[taxid][0], ' '*30), file=sys.stderr)
 				continue
 
 		if len(cds) % 3:
-			print('\r{}: Possible frameshit!{}'.format(entries[taxid][0], ' '*40), file=sys.stderr)
+			print('\r{}: Possible frameshit! Sequence will be omitted{}'.format(entries[taxid][0], ' '*40), file=sys.stderr)
 			continue
+
+		if re.search(r'[^ACGT]', cds):
+			print('\r{}: Non canonical DNA base! Sequence will be included in output.{}'.format(entries[taxid][0], ' '*40), file=sys.stderr)
 
 		if strip and cds[-3:] in ['TAA', 'TGA', 'TAG']:
 			cds = cds[:-3]
