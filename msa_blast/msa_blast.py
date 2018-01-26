@@ -12,6 +12,9 @@ except ImportError:
 	pass
 
 
+logfile = sys.stderr
+
+
 def get_entries(filename, cutoff, TF=None):
 
 	entries = {}
@@ -171,9 +174,9 @@ if __name__ == '__main__':
 	Entrez.email = mail
 
 	if args.logfile:
-		logfile=open(args.logfile, 'w')
+		logfile = open(args.logfile, 'w')
 	else:
-		logfile=sys.stderr
+		logfile = sys.stderr
 
 	entries = get_entries(args.xml, args.evalue, TF)
 	fasta = dl_sequences(entries, args.strip, args.title)
@@ -182,3 +185,6 @@ if __name__ == '__main__':
 		open(args.outfile, 'w').write(fasta)
 	else:
 		print(fasta)
+
+	if args.logfile:
+		logfile.close()
