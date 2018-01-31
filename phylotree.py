@@ -120,6 +120,7 @@ class TreeMaker(object):
 		self.ts.extra_branch_line_type = 0
 		self.ts.extra_branch_line_color = 'black'
 		self.ts.layout_fn = self.layout
+		self.ts.branch_vertical_margin = -10
 
 		self.ts.legend_position = 4
 
@@ -461,6 +462,7 @@ class Combinations(TreeMaker):
 		self.ts.extra_branch_line_type = 0
 		self.ts.extra_branch_line_color = 'black'
 		self.ts.layout_fn = self.layout
+		self.ts.branch_vertical_margin = -10
 
 		self.ts.legend_position = 4
 
@@ -698,6 +700,7 @@ class Crosshits(TreeMaker):
 		self.ts.extra_branch_line_type = 0
 		self.ts.extra_branch_line_color = 'black'
 		self.ts.layout_fn = self.layout
+		self.ts.branch_vertical_margin = -10
 
 		self.ts.legend_position = 4
 
@@ -923,6 +926,7 @@ class Clusters(TreeMaker):
 		self.ts.extra_branch_line_type = 0
 		self.ts.extra_branch_line_color = 'black'
 		self.ts.layout_fn = self.layout
+		self.ts.branch_vertical_margin = -10
 
 		self.ts.legend_position = 4
 
