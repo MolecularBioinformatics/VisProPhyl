@@ -157,26 +157,26 @@ if __name__ == '__main__':
 
 	args = parser.parse_args()
 
+	if args.logfile:
+		logfile = open(args.logfile, 'w')
+	else:
+		logfile = sys.stderr
+
 	if 'BLASTMAIL' in os.environ:
 		mail = os.environ['BLASTMAIL']
 	if args.mail:
 		mail = args.mail
 	if not mail:
-		print('\033[1;31mPlease change your email address in the script before running!\033[0;0m', file=sys.stderr)
+		print('\033[1;31mPlease change your email address in the script before running or set it via -m or the environmental variable BLASTMAIL!\033[0;0m', file=logfile)
 		sys.exit()
 
 	try:
 		TF = TaxFinder()
 	except NameError:
 		TF = None
-		print('Taxfinder module not found. Script continues, but unifying subspecies will not work.', file=sys.stderr)
+		print('Taxfinder module not found. Script continues, but unifying subspecies will not work.', file=logfile)
 
 	Entrez.email = mail
-
-	if args.logfile:
-		logfile = open(args.logfile, 'w')
-	else:
-		logfile = sys.stderr
 
 	entries = get_entries(args.xml, args.evalue, TF)
 	fasta = dl_sequences(entries, args.strip, args.title)
