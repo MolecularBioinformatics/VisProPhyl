@@ -245,6 +245,7 @@ def init():
 	'''
 
 	os.makedirs('fastas', exist_ok=True)
+	os.makedirs('blastresults', exist_ok=True) # In case the user runs Blast separately
 
 	origDir = os.path.dirname(os.path.realpath(__file__))
 
