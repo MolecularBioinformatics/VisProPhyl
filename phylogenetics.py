@@ -278,7 +278,7 @@ def init():
 			out.write(f.read())
 
 
-def runBlast(usefolder = 'fastas', db = '/home/mathias/projects/nr/nr'):
+def runBlast(db):
 	'''
 	Blasts a list of files.
 
@@ -288,6 +288,9 @@ def runBlast(usefolder = 'fastas', db = '/home/mathias/projects/nr/nr'):
 	'''
 
 	os.makedirs('blastresults', exist_ok=True)
+
+	if not blastdb:
+		raise ValueError('blastdb is empty. Run this script with -d /path/to/blastdb')
 
 	if usefolder.endswith('/'):
 		usefolder = usefolder[:-1]
@@ -1208,6 +1211,7 @@ if __name__ == '__main__':
 	parser.add_argument('-b', '--blast', action='store_true', help='Run the full workflow including Blast')
 	parser.add_argument('-s', '--startfrom', default='', help='Run from and including this step [e.g. 7 or hist]')
 	parser.add_argument('-o', '--only', default='', help='Run only the given step [e.g. 4 or unique]')
+	parser.add_argument('-d', '--database', default='', help='Path to the Blast database to use. Only needed when actually running Blast (-b or -[os] blast)')
 
 	args = parser.parse_args()
 
@@ -1223,9 +1227,11 @@ if __name__ == '__main__':
 
 	numArguments = args.all + args.blast + bool(args.startfrom) + bool(args.only)
 
-	if numArguments != 1:
+	if not (numArguments == 1 or (numArguments == 2 and args.database != '')):
 		parser.print_help()
 		sys.exit()
+
+	blastdb = args.database
 
 	# We need objects of these two classes for most of the functions, so we initialize them here already
 	# TaxFinder takes some seconds to load, so this is, what makes loading this module slow.
@@ -1275,3 +1281,5 @@ else:
 		CR = ConfigReader()
 	except IOError:
 		CR = None
+
+	blastdb = ''
