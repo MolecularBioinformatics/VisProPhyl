@@ -117,13 +117,16 @@ class TaxFinder():
 		#	reResults = re.finditer('gi\|([0-9]+)\|[^\|]+\|[^\|]+\|([^\[]+)', hit)	# Group 1 is gi number, group 2 is protein name
 
 		hit = hitid + hitdef
-		reResults = re.finditer(r'gi\|[0-9]+\|[^\|]+\|([^\|]+)\|([^>]+)', hit)	# group 1 is accession, group 2 is protein name
+		reResults = re.findall(r'gi\|[0-9]+\|[^\|]+\|([^\|]+)\|([^>]+)', hit)
+
+		if not reResults:
+			reResults = re.findall(r'[a-z]+\|([^\|]+)\|([^>]+)', hit)
 
 		results = []
 
 		for r in reResults:
-			acc = r.group(1).strip()
-			protname = r.group(2).strip()
+			acc = r[0].strip()
+			protname = r[1].strip()
 
 			if '[' in protname:
 				protname = protname.split('[')[0].rstrip()
