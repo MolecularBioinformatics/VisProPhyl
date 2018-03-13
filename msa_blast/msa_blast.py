@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-mail = '' # Enter your email address here!
+mail = 'mathias.bockwoldt@uit.no' # Enter your email address here!
 
 import sys
 import os
@@ -142,6 +142,39 @@ def dl_sequences(entries, strip, title):
 	return '\n'.join(out)
 
 
+def dl_protein_seqs(entries, title):
+
+	out = []
+	total = len(entries)
+
+	for current, taxid in enumerate(entries, start=1):
+		print('\r' + ' '*75, end='\r', flush=True, file=sys.stderr)
+
+		print('Running seq {:3d} of {:3d}: {:<15}'.format(current, total, entries[taxid][0]), end='', flush=True, file=sys.stderr)
+
+		print('dl:', end='', flush=True, file=sys.stderr)
+		try:
+			handle = Entrez.efetch(db='protein', id=entries[taxid][0], rettype='fasta', retmode='text')
+		except Exception as err:
+			print('\r{}: {}'.format(entries[taxid][0], err), file=sys.stderr)
+			continue
+
+		fasta = str(SeqIO.read(handle, 'fasta')._seq)
+		handle.close()
+
+		print('ok parse:', end='', flush=True, file=sys.stderr)
+
+		fasta_head = '>{}_{}'.format(entries[taxid][0], entries[taxid][2].replace(' ', '-'))
+		if title:
+			fasta_head = fasta_head[:title]
+
+		out.append('{}\n{}'.format(fasta_head, fasta))
+
+	print('', file=logfile)
+
+	return '\n'.join(out)
+
+
 if __name__ == '__main__':
 	import argparse
 
@@ -154,6 +187,7 @@ if __name__ == '__main__':
 	parser.add_argument('-s', '--strip', action='store_true', help='If given, stop codons are stripped off.')
 	parser.add_argument('-e', '--evalue', type=float, default=1e-30, help='Evalue cutoff for including entries')
 	parser.add_argument('-t', '--title', type=int, default=0, help='Shorten the title of the entries to this length. Default is 0 (no shortening).')
+	parser.add_argument('-p', '--protein', action='store_true', help='If given, protein accessions are assumed.')
 
 	args = parser.parse_args()
 
@@ -171,7 +205,7 @@ if __name__ == '__main__':
 		sys.exit()
 
 	try:
-		TF = TaxFinder()
+		TF = None#TaxFinder()
 	except NameError:
 		TF = None
 		print('Taxfinder module not found. Script continues, but unifying subspecies will not work.', file=logfile)
@@ -179,7 +213,10 @@ if __name__ == '__main__':
 	Entrez.email = mail
 
 	entries = get_entries(args.xml, args.evalue, TF)
-	fasta = dl_sequences(entries, args.strip, args.title)
+	if args.protein:
+		fasta = dl_protein_seqs(entries, args.title)
+	else:
+		fasta = dl_sequences(entries, args.strip, args.title)
 
 	if args.outfile:
 		open(args.outfile, 'w').write(fasta)
