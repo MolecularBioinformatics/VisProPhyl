@@ -2,3 +2,4 @@ acc2taxid
 numLines
 taxinfo
 __pycache__/
+*.p

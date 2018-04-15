@@ -2,6 +2,7 @@
 
 import re
 import os
+import pickle
 
 class TaxFinder():
 
@@ -11,13 +12,17 @@ class TaxFinder():
 		with open(self._getFN('numLines'), 'r') as f:
 			self.numLines = int(f.read().rstrip())
 
-		self.taxdb = {}
+		try:
+			self.taxdb = pickle.load(open(self._getFN('taxinfo.p'), 'rb'))
+		except IOError:
+			self.taxdb = {}
+			with open(self._getFN('taxinfo'), 'r') as namefile:
+				for line in namefile:
+					# TaxID, Level, Parent, Rank, Name
+					l = line.split('\t')
+					self.taxdb[int(l[0])] = {'level': int(l[1]), 'parent': int(l[2]), 'rank': l[3], 'name': l[4].rstrip()}
 
-		with open(self._getFN('taxinfo'), 'r') as namefile:
-			for line in namefile:
-				# TaxID, Level, Parent, Rank, Name
-				l = line.split('\t')
-				self.taxdb[int(l[0])] = {'level': int(l[1]), 'parent': int(l[2]), 'rank': l[3], 'name': l[4].rstrip()}
+			pickle.dump(self.taxdb, open(self._getFN('taxinfo.p'), 'wb'))
 
 		self.lineageCache = {}
 		self.fastLineageCache = {}
