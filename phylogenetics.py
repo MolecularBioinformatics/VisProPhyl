@@ -289,7 +289,7 @@ def runBlast(db):
 
 	os.makedirs('blastresults', exist_ok=True)
 
-	if not blastdb:
+	if not db:
 		raise ValueError('blastdb is empty. Run this script with -d /path/to/blastdb')
 
 	if usefolder.endswith('/'):
