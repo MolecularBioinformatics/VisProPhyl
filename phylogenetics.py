@@ -236,18 +236,24 @@ def init():
 	'''
 	Creates some files and a folder to start with a new project. Existing files will not be overwritten.
 
+	:creates: .gitignore
 	:creates: limits.txt
 	:creates: proteinlist.txt
 	:creates: tree_config.txt
 	:creates: tree_to_prune.txt
 	:creates: heatmapTemplate.html
 	:creates: fastas/
+	:creates: blastresults/
 	'''
 
 	os.makedirs('fastas', exist_ok=True)
 	os.makedirs('blastresults', exist_ok=True) # In case the user runs Blast separately
 
 	origDir = os.path.dirname(os.path.realpath(__file__))
+
+	if not os.path.isfile('.gitignore'):
+		with open('.gitignore', 'w') as out, open(os.path.join(origDir, 'gitignore'), 'r') as f:
+			out.write(f.read())
 
 	if not os.path.isfile('limits.txt'):
 		with open('limits.txt', 'w') as out, open(os.path.join(origDir, 'limits.txt'), 'r') as f:

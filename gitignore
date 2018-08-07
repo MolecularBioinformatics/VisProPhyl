@@ -1,0 +1,9 @@
+resulttables/
+combinedtables/
+interactivetables/
+names/
+taxids/
+trees/
+histograms/
+blastmappings/
+crosshits/
