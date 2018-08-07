@@ -241,7 +241,7 @@ def init():
 	:creates: proteinlist.txt
 	:creates: tree_config.txt
 	:creates: tree_to_prune.txt
-	:creates: heatmapTemplate.html
+	:creates: heatmap_template.html
 	:creates: fastas/
 	:creates: blastresults/
 	'''
@@ -252,35 +252,35 @@ def init():
 	origDir = os.path.dirname(os.path.realpath(__file__))
 
 	if not os.path.isfile('.gitignore'):
-		with open('.gitignore', 'w') as out, open(os.path.join(origDir, 'gitignore'), 'r') as f:
+		with open('.gitignore', 'w') as out, open(os.path.join(origDir, 'templates/gitignore'), 'r') as f:
 			out.write(f.read())
 
 	if not os.path.isfile('limits.txt'):
-		with open('limits.txt', 'w') as out, open(os.path.join(origDir, 'limits.txt'), 'r') as f:
+		with open('limits.txt', 'w') as out, open(os.path.join(origDir, 'templates/limits.txt'), 'r') as f:
 			out.write(f.read())
 
 	if not os.path.isfile('proteinlist.txt'):
-		with open('proteinlist.txt', 'w') as out, open(os.path.join(origDir, 'proteinlist.txt'), 'r') as f:
+		with open('proteinlist.txt', 'w') as out, open(os.path.join(origDir, 'templates/proteinlist.txt'), 'r') as f:
 			out.write(f.read())
 
 	if not os.path.isfile('tree_config.txt'):
-		with open('tree_config.txt', 'w') as out, open(os.path.join(origDir, 'tree_config.txt'), 'r') as f:
+		with open('tree_config.txt', 'w') as out, open(os.path.join(origDir, 'templates/tree_config.txt'), 'r') as f:
 			out.write(f.read())
 
 	if not os.path.isfile('tree_to_prune.txt'):
-		with open('tree_to_prune.txt', 'w') as out, open(os.path.join(origDir, 'tree_to_prune.txt'), 'r') as f:
+		with open('tree_to_prune.txt', 'w') as out, open(os.path.join(origDir, 'templates/tree_to_prune.txt'), 'r') as f:
 			out.write(f.read())
 
 	if not os.path.isfile('heatmap_config.txt'):
-		with open('heatmap_config.txt', 'w') as out, open(os.path.join(origDir, 'heatmap_config.txt'), 'r') as f:
+		with open('heatmap_config.txt', 'w') as out, open(os.path.join(origDir, 'templates/heatmap_config.txt'), 'r') as f:
 			out.write(f.read())
 
-	if not os.path.isfile('heatmapTemplate.html'):
-		with open('heatmapTemplate.html', 'w') as out, open(os.path.join(origDir, 'heatmapTemplate.html'), 'r') as f:
+	if not os.path.isfile('heatmap_template.html'):
+		with open('heatmap_template.html', 'w') as out, open(os.path.join(origDir, 'templates/heatmap_template.html'), 'r') as f:
 			out.write(f.read())
 
 	if not os.path.isfile('crosshits.txt'):
-		with open('crosshits.txt', 'w') as out, open(os.path.join(origDir, 'crosshits.txt'), 'r') as f:
+		with open('crosshits.txt', 'w') as out, open(os.path.join(origDir, 'templates/crosshits.txt'), 'r') as f:
 			out.write(f.read())
 
 
@@ -925,7 +925,7 @@ def intHeatmap():
 	'''
 	Creates an interactive heatmap as html file with javascript.
 
-	:uses: heatmapTemplate.html
+	:uses: heatmap_template.html
 	:creates: out.html
 	'''
 
@@ -986,7 +986,7 @@ def intHeatmap():
 	adataPrintable = repr(list(zip(*matrix))).replace('(', '[').replace(')', ']')
 	aproteinsPrintable = repr(proteinsToCheck)
 
-	template = open('heatmapTemplate.html', 'r').read()
+	template = open('heatmap_template.html', 'r').read()
 
 	f = template.format(CWIDTH=width, CHEIGHT=height, CDATA=cdataPrintable, TAXA=taxaPrintable, CPROTEINS=cproteinsPrintable, CLUSTER=clusterPrintable, ADATA=adataPrintable, APROTEINS=aproteinsPrintable)
 

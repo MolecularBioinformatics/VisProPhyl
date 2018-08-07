@@ -1,11 +1,13 @@
 Phylogenetics
 =============
 
-So, the basic functions *should* work by now. But there are still some functions that I did not implement, yet. The current status is in `status.csv`.
+This repo bundles all phylogenetic scripts used during my PhD. Details for the scripts are given below. I propose linking the files to the Python path, your PATH, or alias the scripts.
 
-The script `phylogenetics.py` can be imported as module, `phylotree.py` not (yet) reasonably. All `txt` files and the `html` file are needed for the initialization of new projects.
+All scripts can be run with `-h` or `--help` to get instructions on how to use them.
 
-Both, `phylogenetics.py` and `phylotree.py` can be called directly. Use the `-h` or `--help` flag to get information about the usage.
+Installation dependencies are given separatly with every script.
+
+The scripts were originally written by Mathias Bockwoldt.
 
 
 phylogenetics.py
