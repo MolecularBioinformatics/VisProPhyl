@@ -105,7 +105,7 @@ def dl_sequences(entries, strip, title):
 				except (AttributeError, KeyError):
 					continue
 
-				if start <= entries[taxid][3] and end >= entries[taxid][4]:
+				if (not entries[taxid][3] and not entries[taxid][4]) or (start <= entries[taxid][3] and end >= entries[taxid][4]):
 					featurecds = (name, start, end)
 					break
 		else:
