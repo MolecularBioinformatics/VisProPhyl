@@ -15,10 +15,12 @@ from multiprocessing import cpu_count
 from taxfinder import TaxFinder
 from collections import defaultdict
 
+from phylogenetics import phylogenetics as phylo
+
 
 class ConfigReader():
 	'''
-	The ConfigReader shall read the `limits.txt` and `proteinlist.txt` and return the contents in different formats upon request.
+	The ConfigReader reads the `limits.txt` and `proteinlist.txt` and return the contents in different formats upon request.
 	'''
 
 	def __init__(self):
@@ -208,30 +210,6 @@ def _myGetBasename(name):
 	return os.path.splitext(os.path.basename(name))[0]
 
 
-def _runBlast(query, outfilename, db, evalue = 1, maxthreads = cpu_count()):
-	'''
-	Private method to run Blast. This may take a long time (several minutes up to half-an-hour depending on the computer power and the size of the query and the database.
-
-	:param query: The filename of the query sequence (may include a path)
-	:param outfilename: The filename (including path) to save the result to
-	:param db: The database file
-	:param evalue: The e-value cut-off (should usually be very high, as the results will be filtered out afterwards)
-	:param maxthreads: The maximum number of threads to use by Blast
-	:creates: `outfilename`
-	'''
-
-	cmd = NcbiblastpCommandline(query = query, db = db, evalue = evalue, outfmt = 5, out = outfilename, num_threads = maxthreads, max_target_seqs = 20000)
-	stdout, stderr = cmd()
-
-	print('Blasting', query, 'done')
-	if stdout:
-		print(stdout)
-	if stderr:
-		print(stderr, file=sys.stderr)
-	else:
-		print('No errors')
-
-
 def init():
 	'''
 	Creates some files and a folder to start with a new project. Existing files will not be overwritten.
@@ -288,7 +266,6 @@ def runBlast(db):
 	'''
 	Blasts a list of files.
 
-	:param usefolder: The folder in which to look to fasta files
 	:param db: The database to blast against
 	:creates: `blastresults/*.xml`
 	'''
@@ -298,71 +275,20 @@ def runBlast(db):
 	if not db:
 		raise ValueError('blastdb is empty. Run this script with -d /path/to/blastdb')
 
-	if usefolder.endswith('/'):
-		usefolder = usefolder[:-1]
-
-	li = glob(usefolder + '/*.fasta')
+	file_list = glob('fastas/*.fasta')
 	outstring = 'Now blasting {:' + str(len(str(len(li)))) + 'd}/{}: {}'
 
-	for i, fname in enumerate(li):
-		print(outstring.format(i+1, len(li), fname))
+	for i, fname in enumerate(file_list):
+		print(outstring.format(i+1, len(file_list), fname))
 		outfilename = 'blastresults/{}.xml'.format(_myGetBasename(fname))
-		_runBlast(fname, outfilename, db)
-
-
-def _getTopFromBlast(blastXML, TF, top = 0, exContaminSpecies=True, outfile=None, newHeader=True):
-	'''
-	Parses Blast result XML files and writes the best or all results with less information in a tsv file.
-
-	:param blastXML: The filename of the Blast output (must be output type 5)
-	:param TF: An instance of the TaxFinder class
-	:param top: Write only the best `top` hits to file. If `top` is 0, all hits are saved.
-	:param exContaminSpecies: Shall hits of known contaminated species be excluded?
-	:param outfile: The file to write the results to (including path). If it is None, use the basename of `blastXML`
-	:param newHeader: Where the Blast results produced with new headers (database from 2016 and newer)?
-	:creates: `resulttables/FILE.tsv`
-	'''
-
-	contaminantSpecies = {118797, 59538, 7213}	# Lipotes vexillifer, Pantholops hodgsonii, Ceratitis capitata
-
-	if outfile is None:
-		outfile = 'resulttables/{}.tsv'.format(_myGetBasename(blastXML))
-
-	if top < 0:
-		top = 0
-
-	with open(blastXML, 'r') as f, open(outfile, 'w') as out:
-		records = NCBIXML.parse(f)
-
-		out.write('\t'.join(('Tax-ID', 'Acc', 'Species', 'Rank', 'e-value', 'Length', 'Lineage', 'Prot-Name', 'Query-Protein')) + '\n')
-
-		for record in records:
-			for i, alignment in enumerate(record.alignments):
-				if top and i > top:
-					break
-
-				infos = TF.getInfoFromHitDef(alignment.hit_id, alignment.hit_def, newHeader = newHeader)
-
-				for info in infos:
-					if exContaminSpecies and info['taxid'] in contaminantSpecies:
-						continue
-
-					lineage = ', '.join(TF.getLineage(info['taxid'], display = 'name'))
-
-					for hsp in alignment.hsps:
-						try:
-							line = '\t'.join((str(info['taxid']), info['acc'], info['name'], info['rank'], str(hsp.expect), str(hsp.align_length), lineage, info['protname'], record.query.split('|')[1]))
-						except IndexError:
-							line = '\t'.join((str(info['taxid']), info['acc'], info['name'], info['rank'], str(hsp.expect), str(hsp.align_length), lineage, info['protname'], record.query))
-
-						out.write(line + '\n')
+		phylo.run_blastp(fname, outfilename, db)
 
 
 def parseBlastResults(doOnly = None):
 	'''
 	Parses Blast results.
 
-	:param doOnly: Should be an iterable with filenames that shall be parsed. If all files in `blastresults` shall be parsed, this must be falsy.
+	:param doOnly: Should be an iterable with filenames that shall be parsed. If all files in `blastresults` shall be parsed, this must evaluate to False.
 	:creates: `resulttables/*.tsv`
 	'''
 
@@ -378,7 +304,13 @@ def parseBlastResults(doOnly = None):
 	for i, fname in enumerate(li):
 		basename = _myGetBasename(fname)
 		print(outstring.format(i+1, len(li), basename), end='\r')
-		_getTopFromBlast(fname, TF = TF, top = 0, outfile='resulttables/{}.tsv'.format(basename), exContaminSpecies=True)
+		parsed_result = phylo.parse_blast_result(fname, TF = TF, top = 0, exclude={118797, 59538, 7213})
+		# Contaminants:
+		#    118797: Lipotes vexillifer
+		#     59538: Pantholops hodgsonii
+		#      7213: Ceratitis capitata
+
+		open('resulttables/{}.tsv'.format(basename), 'w').write(parsed_result)
 
 
 def combineParsedResults():
