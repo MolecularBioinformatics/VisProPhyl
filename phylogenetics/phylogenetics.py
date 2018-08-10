@@ -3,7 +3,7 @@
 import sys
 import math
 import pandas as pd
-import scipy.cluster.hierarchy as clusHier
+import scipy.cluster.hierarchy as hierarchy
 from Bio.Blast import NCBIXML
 from Bio.Blast.Applications import NcbiblastpCommandline
 from multiprocessing import cpu_count
@@ -19,9 +19,9 @@ class NodeSanitizer():
 		Initiates the class.
 		'''
 
-		self.badChars = set()
-		self.goodChars = {'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', ' ', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '^', '_', '=', '-', '/', '.', '*'}
-		self.toReplace = {'(': '<', ')': '>', '[': '<', ']': '>', '#': '_', ':': '_', '+': '', "'": '', ',': '_'}
+		self.bad_chars = set()
+		self.good_chars = {'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', ' ', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '^', '_', '=', '-', '/', '.', '*'}
+		self.to_replace = {'(': '<', ')': '>', '[': '<', ']': '>', '#': '_', ':': '_', '+': '', "'": '', ',': '_'}
 
 
 	def sanitize(self, nodes):
@@ -35,29 +35,29 @@ class NodeSanitizer():
 		result = []
 
 		for node in nodes:
-			newName = []
+			new_name = []
 			for char in node:
-				if char not in self.goodChars:
-					if char in self.toReplace:
-						newName.append(self.toReplace[char])
+				if char not in self.good_chars:
+					if char in self.to_replace:
+						new_name.append(self.to_replace[char])
 					else:
-						self.badChars.add(char)
-						newName.append('!')
+						self.bad_chars.add(char)
+						new_name.append('!')
 				else:
-					newName.append(char)
-			result.append(''.join(newName))
+					new_name.append(char)
+			result.append(''.join(new_name))
 
 		return result
 
 
-	def printBadChars(self):
+	def print_bad_chars(self):
 		'''
 		If unknown characters were found in the last call(s) of `NodeSanitizer.sanitize()`, these characters are printed. Otherwise, nothing happens.
 		'''
 
-		if self.badChars:
+		if self.bad_chars:
 			print('Unknown chars found:')
-			for elem in sorted(list(self.badChars)):
+			for elem in sorted(list(self.bad_chars)):
 				print(elem)
 
 
@@ -81,15 +81,15 @@ def run_blastp(query, outfilename, db, evalue = 1, maxthreads = cpu_count()):
 		print(stderr, file=sys.stderr)
 
 
-def parse_blast_result(blastXML, TF, top = 0, exclude=None, newHeader=True):
+def parse_blast_result(blast_XML, TF, top = 0, exclude=None, new_header=True):
 	'''
 	Parses Blast result XML files and writes the best or all results with less information in a tsv file.
 
-	:param blastXML: The filename of the Blast output (must be output type 5)
+	:param blast_XML: The filename of the Blast output (must be output type 5)
 	:param TF: An instance of the TaxFinder class
 	:param top: Write only the best `top` hits to file. If `top` is 0, all hits are saved.
 	:param contaminants: Set with taxids of species to exclude from the results
-	:param newHeader: Where the Blast results produced with new headers (database from 2016 and newer)?
+	:param new_header: Where the Blast results produced with new headers (database from 2016 and newer)?
 	:returns: csv table as string with the results
 	'''
 
@@ -101,7 +101,7 @@ def parse_blast_result(blastXML, TF, top = 0, exclude=None, newHeader=True):
 
 	result = []
 
-	with open(blastXML, 'r') as f, open(outfile, 'w') as out:
+	with open(blast_XML, 'r') as f, open(outfile, 'w') as out:
 		records = NCBIXML.parse(f)
 
 		result.append('\t'.join(('Tax-ID', 'Acc', 'Species', 'Rank', 'e-value', 'Length', 'Lineage', 'Prot-Name', 'Query-Protein')))
@@ -111,7 +111,7 @@ def parse_blast_result(blastXML, TF, top = 0, exclude=None, newHeader=True):
 				if top and i > top:
 					break
 
-				infos = TF.getInfoFromHitDef(alignment.hit_id, alignment.hit_def, newHeader = newHeader)
+				infos = TF.getInfoFromHitDef(alignment.hit_id, alignment.hit_def, newHeader = new_header)
 
 				for info in infos:
 					if info['taxid'] in contaminants:
@@ -224,8 +224,8 @@ def make_newick(filename, sanitizer, TF):
 			node = nodes.pop(0)
 			newnodes = tree.pop(node)
 			if newnodes:
-				sanitizedNodes = Sani.sanitize(newnodes)
-				newick = newick.replace(node, '(' + ','.join(sanitizedNodes) + ')' + node)
+				sanitized_nodes = sanitizer.sanitize(newnodes)
+				newick = newick.replace(node, '(' + ','.join(sanitized_nodes) + ')' + node)
 				nodes.extend(newnodes)
 
 	return newick
@@ -235,9 +235,9 @@ def _get_tree_elements(tree, return_set = False, splitting = True):
 	'''
 
 	:param tree: The Newick tree as a string
-	:param returnSet: Shall the tree elements be returned as a set (True) or a dictionary where each element points to an empty list (False)?
+	:param return_set: Shall the tree elements be returned as a set (True) or a dictionary where each element points to an empty list (False)?
 	:param splitting: If the Newick tree elements are in the form `Name^Taxid`, this must be True. If it is in the form `taxid`, this must be False.
-	:returns: Either a list with taxonomy ids or a dictionary with taxonomy ids as keys and empty lists as value, depending on `returnSet`
+	:returns: Either a list with taxonomy ids or a dictionary with taxonomy ids as keys and empty lists as value, depending on `return_set`
 	'''
 
 	tree = tree.replace('(', '\n').replace(')', '\n').replace(',', '\n').replace(';', '')
@@ -296,8 +296,8 @@ def get_keys_and_attributes(proteinlist, filenames, master_tree):
 def interactive_heatmap(matrix, tick_taxa, tick_proteins, colors, template, method):
 	pdmatrix = pd.DataFrame(matrix, columns = tick_taxa, index = tick_proteins)
 
-	linkage = clusHier.linkage(pdmatrix, method=method)
-	dendro = clusHier.dendrogram(linkage, labels = tick_proteins, no_plot = True, distance_sort = True)
+	linkage = hierarchy.linkage(pdmatrix, method=method)
+	dendro = hierarchy.dendrogram(linkage, labels = tick_proteins, no_plot = True, distance_sort = True)
 
 	data = []
 	for num in dendro['leaves']:
@@ -325,7 +325,7 @@ def interactive_heatmap(matrix, tick_taxa, tick_proteins, colors, template, meth
 	cdata_printable = repr(list(zip(*data))).replace('(', '[').replace(')', ']')
 	taxa_printable = repr(tick_taxons)
 	adata_printable = repr(list(zip(*matrix))).replace('(', '[').replace(')', ']')
-	aproteins_printable = repr(proteinsToCheck)
+	aproteins_printable = repr(tick_proteins)
 
 	html = template.format(CWIDTH=width, CHEIGHT=height, CDATA=cdata_printable, TAXA=taxa_printable, CPROTEINS=cproteins_printable, CLUSTER=cluster_printable, ADATA=adata_printable, APROTEINS=aproteins_printable)
 

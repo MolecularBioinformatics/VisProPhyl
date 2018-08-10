@@ -23,18 +23,25 @@ class ConfigReader():
 		Initiates the class.
 		'''
 
-		self._readProteinlist()
-		self._readLimits()
-		self._readHeatmapValues()
+		self.limits_dict = {'default': (1e-30, 50)}
+		self.proteins = []
+		self.protein_files = []
+		self.taxa_to_show = []
+		self.hm_colors = {}
+		self.clustering_method = ''
+
+		self._read_proteinlist()
+		self._read_limits()
+		self._read_heatmap_values()
 
 
-	def _readLimits(self):
+	def _read_limits(self):
 		'''
-		Reads `limits.txt` and saves the content as dictionary to be used by the `getLimits()` method.
+		Reads `limits.txt` and saves the content as dictionary to be used by the `get_limits()` method.
 		'''
 
 		with open('limits.txt') as f:
-			self.limitsDict = {'default': (1e-30, 50)}
+			self.limits_dict = {'default': (1e-30, 50)}
 			for line in f:
 				line = line.split('#')[0].rstrip()
 				if not line:
@@ -43,15 +50,15 @@ class ConfigReader():
 				try:
 					evalue = float(lline[1])
 				except ValueError:
-					evalue = self.limitsDict['default'][0]
+					evalue = self.limits_dict['default'][0]
 				try:
 					length = int(lline[2])
 				except ValueError:
-					length = self.limitsDict['default'][1]
-				self.limitsDict[lline[0]] = (evalue, length)
+					length = self.limits_dict['default'][1]
+				self.limits_dict[lline[0]] = (evalue, length)
 
 
-	def getLimits(self):
+	def get_limits(self):
 		'''
 		Reads `limits.txt` and returns a dict in the format: {'protein': (evalue, length), ...} where evalue is the negative exponent of the evalue (int) and length is the length limit for the protein (int).
 
@@ -59,17 +66,17 @@ class ConfigReader():
 		:returns: A dictionary with limits as described above
 		'''
 
-		return self.limitsDict
+		return self.limits_dict
 
 
-	def _readProteinlist(self):
+	def _read_proteinlist(self):
 		'''
 		Reads `proteinlist.txt` and saves the content as lists to be used by the get* methods.
 		'''
 
 		with open('proteinlist.txt') as f:
 			self.proteins = []
-			self.proteinFiles = []
+			self.protein_files = []
 			for line in f:
 				line = line.split('#')[0].strip()
 				if not line:
@@ -77,14 +84,14 @@ class ConfigReader():
 				elems = line.split()
 				if elems[0] not in self.proteins:
 					self.proteins.append(elems[0])
-					self.proteinFiles.append([])
+					self.protein_files.append([])
 				pidx = self.proteins.index(elems[0])
-				self.proteinFiles[pidx].append(os.path.splitext(elems[1])[0])
+				self.protein_files[pidx].append(os.path.splitext(elems[1])[0])
 
 
-	def getProteinNames(self, prefix = '', suffix = ''):
+	def get_protein_names(self, prefix = '', suffix = ''):
 		'''
-		Returns a set of proteins in the format: {'protein1', 'protein2', ...}. A prefix (a path) can be added as well as a suffix. getProteinNames('abc/', '.txt') will turn 'protein1' into 'abc/protein1.txt'.
+		Returns a set of proteins in the format: {'protein1', 'protein2', ...}. A prefix (a path) can be added as well as a suffix. get_protein_names('abc/', '.txt') will turn 'protein1' into 'abc/protein1.txt'.
 
 		:param prefix: A string to be prepended before the name
 		:param suffix: A string to be appended after the name
@@ -94,21 +101,21 @@ class ConfigReader():
 		return set((prefix + protein + suffix for protein in self.proteins))
 
 
-	def getProteinFiles(self, prefix = '', suffix = ''):
+	def get_protein_files(self, prefix = '', suffix = ''):
 		'''
-		Returns a set of filenames in the format: {'proteinfile1', 'proteinfile2', ...}. The files are just the basenames without suffix. A prefix (a path) can be added as well as a suffix. getProteinFiles('abc/', '.txt') will turn 'file1' into 'abc/file1.txt'.
+		Returns a set of filenames in the format: {'proteinfile1', 'proteinfile2', ...}. The files are just the basenames without suffix. A prefix (a path) can be added as well as a suffix. get_protein_files('abc/', '.txt') will turn 'file1' into 'abc/file1.txt'.
 
 		:param prefix: A string to be prepended before the filename
 		:param suffix: A string to be appended after the filename
 		:returns: A set of filenames
 		'''
 
-		return set((prefix + fn + suffix for proteinlist in self.proteinFiles for fn in proteinlist))
+		return set((prefix + fn + suffix for proteinlist in self.protein_files for fn in proteinlist))
 
 
-	def getProteinDict(self, prefix = '', suffix = ''):
+	def get_protein_dict(self, prefix = '', suffix = ''):
 		'''
-		Returns a dict with proteins and their respective file names in the format: {'protein': set('file1', 'file2', ...), ...}. The files are just the basenames without suffix. A prefix (a path) can be added as well as a suffix. getProteinDict('abc/', '.txt') will turn 'file1' into 'abc/file1.txt'.
+		Returns a dict with proteins and their respective file names in the format: {'protein': set('file1', 'file2', ...), ...}. The files are just the basenames without suffix. A prefix (a path) can be added as well as a suffix. get_protein_dict('abc/', '.txt') will turn 'file1' into 'abc/file1.txt'.
 
 		:param prefix: A string to be prepended before the filename
 		:param suffix: A string to be appended after the filename
@@ -117,12 +124,12 @@ class ConfigReader():
 
 		ret = {}
 		for i in range(len(self.proteins)):
-			ret[self.proteins[i]] = set((prefix + fn + suffix for fn in self.proteinFiles[i]))
+			ret[self.proteins[i]] = set((prefix + fn + suffix for fn in self.protein_files[i]))
 
 		return ret
 
 
-	def _readHeatmapValues(self):
+	def _read_heatmap_values(self):
 		'''
 		Reads `heatmap_config.txt` and saves the content as lists and dicts to be used by the get* methods.
 		'''
@@ -162,7 +169,7 @@ class ConfigReader():
 					raise ValueError('Error in heatmap_config.txt. No mode selected and {} found!'.format(line))
 
 
-	def getHMTaxa(self):
+	def get_heatmap_taxa(self):
 		'''
 		Returns a list with the taxa to show.
 
@@ -172,7 +179,7 @@ class ConfigReader():
 		return self.taxa_to_show
 
 
-	def getHMColors(self):
+	def get_heatmap_colors(self):
 		'''
 		Returns a dict with the colors in the form {'letter': 'color_code', ...}
 
@@ -182,7 +189,7 @@ class ConfigReader():
 		return self.hm_colors
 
 
-	def getHMClustering(self):
+	def get_heatmap_clustering(self):
 		'''
 		Returns the clustering method of choice
 
@@ -194,7 +201,7 @@ class ConfigReader():
 	# end ConfigReader
 
 
-def _myGetBasename(name):
+def _my_get_basename(name):
 	'''
 	Strips the path and the extension from a filename. E.g. /a/path/to/file.png -> file
 
@@ -222,42 +229,42 @@ def init():
 	os.makedirs('fastas', exist_ok=True)
 	os.makedirs('blastresults', exist_ok=True) # In case the user runs Blast separately
 
-	origDir = os.path.dirname(os.path.realpath(__file__))
+	orig_dir = os.path.dirname(os.path.realpath(__file__))
 
 	if not os.path.isfile('.gitignore'):
-		with open('.gitignore', 'w') as out, open(os.path.join(origDir, 'templates/gitignore')) as f:
+		with open('.gitignore', 'w') as out, open(os.path.join(orig_dir, 'templates/gitignore')) as f:
 			out.write(f.read())
 
 	if not os.path.isfile('limits.txt'):
-		with open('limits.txt', 'w') as out, open(os.path.join(origDir, 'templates/limits.txt')) as f:
+		with open('limits.txt', 'w') as out, open(os.path.join(orig_dir, 'templates/limits.txt')) as f:
 			out.write(f.read())
 
 	if not os.path.isfile('proteinlist.txt'):
-		with open('proteinlist.txt', 'w') as out, open(os.path.join(origDir, 'templates/proteinlist.txt')) as f:
+		with open('proteinlist.txt', 'w') as out, open(os.path.join(orig_dir, 'templates/proteinlist.txt')) as f:
 			out.write(f.read())
 
 	if not os.path.isfile('tree_config.txt'):
-		with open('tree_config.txt', 'w') as out, open(os.path.join(origDir, 'templates/tree_config.txt')) as f:
+		with open('tree_config.txt', 'w') as out, open(os.path.join(orig_dir, 'templates/tree_config.txt')) as f:
 			out.write(f.read())
 
 	if not os.path.isfile('tree_to_prune.txt'):
-		with open('tree_to_prune.txt', 'w') as out, open(os.path.join(origDir, 'templates/tree_to_prune.txt')) as f:
+		with open('tree_to_prune.txt', 'w') as out, open(os.path.join(orig_dir, 'templates/tree_to_prune.txt')) as f:
 			out.write(f.read())
 
 	if not os.path.isfile('heatmap_config.txt'):
-		with open('heatmap_config.txt', 'w') as out, open(os.path.join(origDir, 'templates/heatmap_config.txt')) as f:
+		with open('heatmap_config.txt', 'w') as out, open(os.path.join(orig_dir, 'templates/heatmap_config.txt')) as f:
 			out.write(f.read())
 
 	if not os.path.isfile('heatmap_template.html'):
-		with open('heatmap_template.html', 'w') as out, open(os.path.join(origDir, 'templates/heatmap_template.html')) as f:
+		with open('heatmap_template.html', 'w') as out, open(os.path.join(orig_dir, 'templates/heatmap_template.html')) as f:
 			out.write(f.read())
 
 	if not os.path.isfile('crosshits.txt'):
-		with open('crosshits.txt', 'w') as out, open(os.path.join(origDir, 'templates/crosshits.txt')) as f:
+		with open('crosshits.txt', 'w') as out, open(os.path.join(orig_dir, 'templates/crosshits.txt')) as f:
 			out.write(f.read())
 
 
-def runBlast(db):
+def run_blast(db):
 	'''
 	Blasts a list of files.
 
@@ -270,34 +277,34 @@ def runBlast(db):
 	if not db:
 		raise ValueError('blastdb is empty. Run this script with -d /path/to/blastdb')
 
-	file_list = CR.getProteinFiles(prefix = 'fastas/', suffix = '.fasta')
+	file_list = CR.get_protein_files(prefix = 'fastas/', suffix = '.fasta')
 	outstring = 'Now blasting {:' + str(len(str(len(li)))) + 'd}/{}: {}'
 
 	for i, filename in enumerate(file_list):
 		print(outstring.format(i+1, len(file_list), filename))
-		outfilename = 'blastresults/{}.xml'.format(_myGetBasename(filename))
+		outfilename = 'blastresults/{}.xml'.format(_my_get_basename(filename))
 		phylo.run_blastp(filename, outfilename, db)
 
 
-def parseBlastResults(doOnly = None):
+def parse_blast_results(do_only = None):
 	'''
 	Parses Blast results.
 
-	:param doOnly: Should be an iterable with filenames that shall be parsed. If all files in `blastresults` shall be parsed, this must evaluate to False.
+	:param do_only: Should be an iterable with filenames that shall be parsed. If all files in `blastresults` shall be parsed, this must evaluate to False.
 	:creates: `resulttables/*.tsv`
 	'''
 
-	if doOnly:
-		li = doOnly
+	if do_only:
+		li = do_only
 	else:
-		li = CR.getProteinFiles(prefix = 'blastresults/', suffix = '.xml')
+		li = CR.get_protein_files(prefix = 'blastresults/', suffix = '.xml')
 
 	os.makedirs('resulttables', exist_ok=True)
 
 	outstring = 'Now parsing {:' + str(len(str(len(li)))) + 'd}/{}: {:<30}'
 
 	for i, filename in enumerate(li):
-		basename = _myGetBasename(filename)
+		basename = _my_get_basename(filename)
 		print(outstring.format(i+1, len(li), basename), end='\r')
 		parsed_result = phylo.parse_blast_result(filename, TF = TF, top = 0, exclude={118797, 59538, 7213})
 		# Contaminants:
@@ -308,7 +315,7 @@ def parseBlastResults(doOnly = None):
 		open('resulttables/{}.tsv'.format(basename), 'w').write(parsed_result)
 
 
-def combineParsedResults():
+def combine_parsed_results():
 	'''
 	Combines parsed Blast results.
 
@@ -317,8 +324,8 @@ def combineParsedResults():
 
 	os.makedirs('combinedtables', exist_ok=True)
 
-	limits = CR.getLimits()
-	proteins = CR.getProteinDict(prefix = 'resulttables/', suffix = '.tsv')
+	limits = CR.get_limits()
+	proteins = CR.get_protein_dict(prefix = 'resulttables/', suffix = '.tsv')
 
 	for k in sorted(proteins):
 		print('combining tsv files... {:<40}'.format(k), end='\r')
@@ -335,14 +342,14 @@ def combineParsedResults():
 			open(outfn, 'w').write(combined)
 
 
-def tablesForInteractiveHeatmap():
+def tables_for_interactive_heatmap():
 	'''
 	Combines parsed Blast results for use for interactive heatmaps.
 
 	:creates: `interactivetables/*.tsv`
 	'''
 
-	proteins = CR.getProteinDict(prefix = 'resulttables/', suffix = '.tsv')
+	proteins = CR.get_protein_dict(prefix = 'resulttables/', suffix = '.tsv')
 
 	os.makedirs('interactivetables', exist_ok=True)
 
@@ -356,7 +363,7 @@ def tablesForInteractiveHeatmap():
 				outfile.write('{}\t{}\n'.format(m, entries[m]))
 
 
-def uniqueNames():
+def unique_names():
 	'''
 	For each protein, creates lists with the species that possess this protein. Two lists are generated: One with unique Species names and one with unique taxonomy ids. In addition a general.names and general.taxids are generated with all Species that occur in the lists of all proteins.
 
@@ -370,7 +377,7 @@ def uniqueNames():
 	total_names = set()
 	total_taxids = set()
 
-	for fn in CR.getProteinNames():
+	for fn in CR.get_protein_names():
 		names, taxids = phylo.unique_names_and_taxids(fn)
 
 		with open('names/{}.names'.format(fn), 'w') as f:
@@ -393,14 +400,14 @@ def uniqueNames():
 			f.write(str(taxid) + '\n')
 
 
-def makeNewick():
+def make_newick():
 	'''
 	Creates Newick trees for every taxonomy-id list in the taxids folder.
 
 	:creates: `trees/*.tre`
 	'''
 
-	li = CR.getProteinNames(prefix = 'taxids/', suffix = '.taxids')
+	li = CR.get_protein_names(prefix = 'taxids/', suffix = '.taxids')
 	li.add('taxids/general.taxids')
 
 	os.makedirs('trees', exist_ok=True)
@@ -408,15 +415,15 @@ def makeNewick():
 	sanitizer = phylo.NodeSanitizer()
 
 	for filename in li:
-		outfn = 'trees/{}.tre'.format(_myGetBasename(filename))
+		outfn = 'trees/{}.tre'.format(_my_get_basename(filename))
 		newick = phylo.make_newick(filename, sanitizer, TF)
 
 		open(outfn, 'w').write(newick)
 
-	sanitizer.printBadChars()
+	sanitizer.print_bad_chars()
 
 
-def treeAttributes():
+def tree_attributes():
 	'''
 	For each element in the general tree, determine the proteins (attributes) for this element. Each attribute will be a two-letter string. The meaning of each string will be written to `attributekeys.txt`.
 
@@ -425,7 +432,7 @@ def treeAttributes():
 	:creates: `attributes.txt` (containing the keys for each protein)
 	'''
 
-	proteinlist = sorted(list(CR.getProteinNames()))
+	proteinlist = sorted(list(CR.get_protein_names()))
 	filenames = ['trees/{}.tre'.format(name) for name in proteinlist]
 
 	master_tree = open('trees/general.tre').read()
@@ -441,31 +448,31 @@ def treeAttributes():
 			out.write('{}\t{}\n'.format(k, ''.join(attributes[k])))
 
 
-def makeHistograms():
+def make_histograms():
 	'''
 	For each seed protein, the distribution of hits is shown in a histogram.
 
 	:creates: `histograms/*.png`
 	'''
 
-	proteinFiles = CR.getProteinDict(prefix = 'fastas/', suffix = '.fasta')
-	seedLengths = {}
+	protein_files = CR.get_protein_dict(prefix = 'fastas/', suffix = '.fasta')
+	seed_lengths = {}
 
-	for prot in proteinFiles:
-		seedLengths[prot] = []
-		for f in proteinFiles[prot]:
+	for prot in protein_files:
+		seed_lengths[prot] = []
+		for f in protein_files[prot]:
 			with open(f) as fastafile:
 				length = 0
 				next(fastafile)
 				for line in fastafile:
 					length += len(line.rstrip())
-			seedLengths[prot].append(length)
+			seed_lengths[prot].append(length)
 
 	os.makedirs('histograms', exist_ok=True)
 
 	cm = plt.cm.get_cmap('rainbow')
 
-	for protein in sorted(proteinFiles):
+	for protein in sorted(protein_files):
 		fn = 'combinedtables/{}.tsv'.format(protein)
 		print('Histogram: {:<50}'.format(protein), end='\r')
 		values = np.loadtxt(fn, dtype=np.int, comments=None, delimiter='\t', skiprows=1, usecols=(5,))
@@ -493,7 +500,7 @@ total elements: {}
 
 interval: {}'''.format(mi, ma, np.mean(values), np.median(values), values.size, interval)
 
-		seeds = seedLengths[protein]
+		seeds = seed_lengths[protein]
 
 		sizes = '''Seed protein(s)
 min: {}
@@ -528,7 +535,7 @@ total seeds: {}'''.format(min(seeds), max(seeds), np.average(seeds), len(seeds))
 		fig.clear()
 
 
-def showBlastMapping():
+def show_blast_mapping():
 	'''
 	For each protein, create an overview over where the hits where mapped over the length of the protein.
 
@@ -537,7 +544,7 @@ def showBlastMapping():
 
 	os.makedirs('blastmappings', exist_ok=True)
 
-	filenames = sorted(list(CR.getProteinFiles()))
+	filenames = sorted(list(CR.get_protein_files()))
 
 	fnt = ImageFont.load_default()
 
@@ -551,7 +558,7 @@ def showBlastMapping():
 				query_length += len(line.rstrip())
 
 		counters = [np.zeros(query_length, np.int) for x in range(6)]
-		numHsps = [0] * 6
+		num_hsps = [0] * 6
 
 		with open('blastresults/{}.xml'.format(filename)) as f:
 			records = NCBIXML.parse(f)
@@ -572,7 +579,7 @@ def showBlastMapping():
 						else:
 							n = 5
 						counters[n][hsp.query_start - 1:hsp.query_end - 1] += 1
-						numHsps[n] += 1
+						num_hsps[n] += 1
 
 		ma = [np.amax(counters[n]) * 0.01 for n in range(6)]
 
@@ -590,7 +597,7 @@ def showBlastMapping():
 		dr.text((2, 540), '<= 1e-120', (0, 0, 0), fnt)
 
 		for n in range(6):
-			dr.text((2, 60 + 100 * n), 'n = {}'.format(numHsps[n]), (0, 0, 0), fnt)
+			dr.text((2, 60 + 100 * n), 'n = {}'.format(num_hsps[n]), (0, 0, 0), fnt)
 
 		colors = [(0, 0, 0), (0, 0, 200), (0, 200, 0), (200, 0, 200), (200, 0, 0), (150, 150, 0)]
 
@@ -606,7 +613,7 @@ def showBlastMapping():
 		im.save('blastmappings/{}.png'.format(filename))
 
 
-def similarityMatrix():
+def similarity_matrix():
 	'''
 	Creates a similarity matrix of proteins. For each protein, the Blast hits are compared to each other protein. The lowest e-value of each protein-protein combination is saved. This gives an impression of how similar two given proteins are and how much the results overlap.
 
@@ -614,7 +621,7 @@ def similarityMatrix():
 	:creates: `matrix.csv`
 	'''
 
-	names = {name: 'combinedtables/{}.tsv'.format(name) for name in CR.getProteinNames()}
+	names = {name: 'combinedtables/{}.tsv'.format(name) for name in CR.get_protein_names()}
 
 	res = phylo.similarity_matrix(names)
 
@@ -624,7 +631,7 @@ def similarityMatrix():
 			out.write(names[i] + '\t' + '\t'.join(map(str, line)) + '\n')
 
 
-def intHeatmap():
+def int_heatmap():
 	'''
 	Creates an interactive heatmap as html file with javascript.
 
@@ -632,48 +639,48 @@ def intHeatmap():
 	:creates: out.html
 	'''
 
-	taxaToCheck = CR.getHMTaxa()
-	colors = CR.getHMColors()
-	method = CR.getHMClustering()
-	proteinsToCheck = sorted(list(CR.getProteinNames()))
+	taxa_to_check = CR.get_heatmap_taxa()
+	colors = CR.get_heatmap_colors()
+	method = CR.get_heatmap_clustering()
+	proteins_to_check = sorted(list(CR.get_protein_names()))
 	template = open('heatmap_template.html').read()
 
 	taxids = {}
-	tickTaxons = []
-	for i, tax in enumerate(taxaToCheck):
+	tick_taxons = []
+	for i, tax in enumerate(taxa_to_check):
 		taxname, taxid = tax.split('^')
-		tickTaxons.append(taxname.replace('_', ' '))
+		tick_taxons.append(taxname.replace('_', ' '))
 		taxids[taxid] = i
 
-	tickProteins = proteinsToCheck[:]
+	tick_proteins = proteins_to_check[:]
 
 	matrix = []
-	for i, protein in enumerate(proteinsToCheck):
-		matrix.append([-100] * len(taxaToCheck))
+	for i, protein in enumerate(proteins_to_check):
+		matrix.append([-100] * len(taxa_to_check))
 		with open('interactivetables/{}.tsv'.format(protein)) as f:
 			for line in f:
 				lline = line.split()
 				if lline[0] in taxids:
 					matrix[i][taxids[lline[0]]] = int(lline[1])
 
-	html = phylo.interactive_heatmap(matrix, tick_taca, tick_proteins, colors, template, method)
+	html = phylo.interactive_heatmap(matrix, tick_taxa, tick_proteins, colors, template, method)
 
 	open('out.html', 'w').write(html)
 
 
-# adapted from similarityMatrix
-def getCrosshits(doOnly = None, crosscrosshits = False):
+# adapted from similarity_matrix
+def get_crosshits(do_only = None, crosscrosshits = False):
 	'''
 	For each pair of proteins creates a file '{protein1}-{protein2}-crosshits.tsv'
 	File has three columns: e-value, number of crosshits, AccID^TaxID for all crosshits (comma-separated)
-	Will use the config file 'crosshits.txt', unless given a list of proteins in 'doOnly'.
+	Will use the config file 'crosshits.txt', unless given a list of proteins in 'do_only'.
 
-	:param doOnly: Should be an iterable with proteinnames that shall be used. If it's Falsy proteins in 'crosshits.txt' will be used instead.
+	:param do_only: Should be an iterable with proteinnames that shall be used. If it's Falsy proteins in 'crosshits.txt' will be used instead.
 	:creates: `crosshits/*.tsv`
 	'''
 
-	if doOnly:
-		li = doOnly
+	if do_only:
+		li = do_only
 	else:
 		with open('crosshits.txt') as f:
 			li = list()
@@ -775,7 +782,7 @@ def getCrosshits(doOnly = None, crosscrosshits = False):
 						out.write(','.join(cchits[n])+'\n')
 
 
-def crossHistograms():
+def cross_histograms():
 	combos = [f[:-4] for f in os.listdir('crosshits') if f.endswith('.tsv')]
 	data = {}
 
@@ -829,22 +836,22 @@ def crossHistograms():
 
 tasknames = ['blast', 'parse', 'combine', 'comheat', 'unique', 'newick', 'attrib', 'hist', 'map', 'intheat', 'matrix', 'crosshits', 'crosshist']
 
-tasks = {'blast': ('run Blast', runBlast), # ok
-'parse': ('parse Blast results', parseBlastResults), # ok
-'combine': ('combine parsed results', combineParsedResults), # ok
-'comheat': ('combine parsed results for heatmaps', tablesForInteractiveHeatmap), # ok
-'unique': ('create unique lists of names and taxids', uniqueNames), # ok
-'newick': ('create Newick tree for each protein', makeNewick), # ok
-'attrib': ('determine tree attributes', treeAttributes), # ok
-'hist': ('create histograms with Blast hits for each protein', makeHistograms),
-'map': ('create hit mapping diagrams for each protein', showBlastMapping),
-'intheat': ('create an interactive heatmap (html)', intHeatmap), # ok
-'matrix': ('create a similarity matrix of all proteins', similarityMatrix), # ok
-'crosshits': ('create files with all blast crosshits of certain proteins', getCrosshits),
-'crosshist': ('creates Histograms of e-value distribution for crosshits', crossHistograms)}
+tasks = {'blast': ('run Blast', run_blast), # ok
+'parse': ('parse Blast results', parse_blast_results), # ok
+'combine': ('combine parsed results', combine_parsed_results), # ok
+'comheat': ('combine parsed results for heatmaps', tables_for_interactive_heatmap), # ok
+'unique': ('create unique lists of names and taxids', unique_names), # ok
+'newick': ('create Newick tree for each protein', make_newick), # ok
+'attrib': ('determine tree attributes', tree_attributes), # ok
+'hist': ('create histograms with Blast hits for each protein', make_histograms),
+'map': ('create hit mapping diagrams for each protein', show_blast_mapping),
+'intheat': ('create an interactive heatmap (html)', int_heatmap), # ok
+'matrix': ('create a similarity matrix of all proteins', similarity_matrix), # ok
+'crosshits': ('create files with all blast crosshits of certain proteins', get_crosshits),
+'crosshist': ('creates Histograms of e-value distribution for crosshits', cross_histograms)}
 
 
-def runWorkflow(start, end=''):
+def run_workflow(start, end=''):
 	'''
 	Starts the workflow from `start` until `end`. If `end` is empty, the workflow is run until the last element of the workflow.
 
@@ -899,9 +906,9 @@ if __name__ == '__main__':
 		init()
 		sys.exit()
 
-	numArguments = args.all + args.blast + bool(args.startfrom) + bool(args.only)
+	num_arguments = args.all + args.blast + bool(args.startfrom) + bool(args.only)
 
-	if not (numArguments == 1 or (numArguments == 2 and args.database != '')):
+	if not (num_arguments == 1 or (num_arguments == 2 and args.database != '')):
 		parser.print_help()
 		sys.exit()
 
@@ -916,9 +923,9 @@ if __name__ == '__main__':
 		CR = None
 
 	if args.all:
-		runWorkflow('parse')
+		run_workflow('parse')
 	elif args.blast:
-		runWorkflow('blast')
+		run_workflow('blast')
 	elif args.startfrom:
 		try:
 			a = int(args.startfrom)
@@ -928,7 +935,7 @@ if __name__ == '__main__':
 			except ValueError:
 				parser.print_help()
 		if a < len(tasknames):
-			runWorkflow(tasknames[a])
+			run_workflow(tasknames[a])
 		else:
 			parser.print_help()
 	elif args.only:
