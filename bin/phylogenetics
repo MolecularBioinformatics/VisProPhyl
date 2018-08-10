@@ -392,11 +392,11 @@ def unique_names():
 		total_taxids.update(taxids)
 
 	with open('names/general.names', 'w') as f:
-		for name in sorted(list(total_names)):
+		for name in sorted(total_names):
 			f.write(name + '\n')
 
 	with open('taxids/general.taxids', 'w') as f:
-		for taxid in sorted(list(total_taxids)):
+		for taxid in sorted(total_taxids):
 			f.write(str(taxid) + '\n')
 
 
@@ -432,7 +432,7 @@ def tree_attributes():
 	:creates: `attributes.txt` (containing the keys for each protein)
 	'''
 
-	proteinlist = sorted(list(CR.get_protein_names()))
+	proteinlist = sorted(CR.get_protein_names())
 	filenames = ['trees/{}.tre'.format(name) for name in proteinlist]
 
 	master_tree = open('trees/general.tre').read()
@@ -544,7 +544,7 @@ def show_blast_mapping():
 
 	os.makedirs('blastmappings', exist_ok=True)
 
-	filenames = sorted(list(CR.get_protein_files()))
+	filenames = sorted(CR.get_protein_files())
 
 	fnt = ImageFont.load_default()
 
@@ -642,7 +642,7 @@ def int_heatmap():
 	taxa_to_check = CR.get_heatmap_taxa()
 	colors = CR.get_heatmap_colors()
 	method = CR.get_heatmap_clustering()
-	proteins_to_check = sorted(list(CR.get_protein_names()))
+	proteins_to_check = sorted(CR.get_protein_names())
 	template = open('heatmap_template.html').read()
 
 	taxids = {}
@@ -696,7 +696,7 @@ def get_crosshits(do_only = None, crosscrosshits = False):
 						crosscrosshits = True
 						groups = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 50]
 					if line[1:] == 'groups':
-						groups = sorted(list(map(int, line[1:].split())))
+						groups = sorted(map(int, line[1:].split()))
 					continue
 
 				li += [line]

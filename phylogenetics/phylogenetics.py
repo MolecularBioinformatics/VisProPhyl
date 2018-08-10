@@ -57,7 +57,7 @@ class NodeSanitizer():
 
 		if self.bad_chars:
 			print('Unknown chars found:')
-			for elem in sorted(list(self.bad_chars)):
+			for elem in sorted(self.bad_chars):
 				print(elem)
 
 
@@ -101,7 +101,7 @@ def parse_blast_result(blast_XML, TF, top = 0, exclude=None, new_header=True):
 
 	result = []
 
-	with open(blast_XML, 'r') as f, open(outfile, 'w') as out:
+	with open(blast_XML) as f, open(outfile, 'w') as out:
 		records = NCBIXML.parse(f)
 
 		result.append('\t'.join(('Tax-ID', 'Acc', 'Species', 'Rank', 'e-value', 'Length', 'Lineage', 'Prot-Name', 'Query-Protein')))
@@ -187,15 +187,15 @@ def unique_names_and_taxids(filename):
 	names = set()
 	taxids = set()
 
-	with open('combinedtables/{}.tsv'.format(fn), 'r') as f:
+	with open('combinedtables/{}.tsv'.format(fn)) as f:
 		next(f)
 		for line in f:
 			elems = line.split('\t')
 			names.add(elems[2])
 			taxids.add(int(elems[0]))
 
-	names = sorted(list(names))
-	taxids = sorted(list(taxids))
+	names = sorted(names)
+	taxids = sorted(taxids)
 
 	return names, taxids
 
