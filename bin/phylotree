@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 
-from ete3 import Tree, TreeStyle, NodeStyle, faces, PieChartFace, TextFace, CircleFace
 import sys
 import math
+from ete3 import Tree, TreeStyle, NodeStyle, faces, PieChartFace, TextFace, CircleFace
 from operator import add
 from matplotlib import colors as mpl_colors
 from matplotlib import cm as mpl_colormap
@@ -192,7 +192,7 @@ class TreeMaker(object):
 		self.delete = set()
 
 		try:
-			with open(self.prune, 'r') as f:
+			with open(self.prune) as f:
 				active = self.pruneAfter
 				for line in f:
 					line = line.strip()
@@ -338,7 +338,7 @@ class Combinations(TreeMaker):
 
 		# Read tree attributes into dict
 		self.elements = {}
-		with open(self.attr, 'r') as f:
+		with open(self.attr) as f:
 			for line in f:
 				l = line.rstrip().split('\t')
 				self.elements[int(l[0])] = set([l[1][i:i + 2] for i in range(0, len(l[1]), 2)])
@@ -367,7 +367,7 @@ class Combinations(TreeMaker):
 
 # for config/feature-combinations
 	def readConfig(self):
-		with open(self.config, 'r') as f:
+		with open(self.config) as f:
 			for line in f:
 				line = line.strip()
 
@@ -587,7 +587,7 @@ class Crosshits(TreeMaker):
 
 		# Read tree attributes into dict
 		self.elements = {}
-		with open(self.combo, 'r') as f:
+		with open(self.combo) as f:
 			for line in f:
 				line = line.rstrip('\n').split('#')[0]
 				if not line:
@@ -816,7 +816,7 @@ class Clusters(TreeMaker):
 		self.featurelist = []
 		self.featurenames = {}
 
-		with open(self.loadfile, 'r') as f:
+		with open(self.loadfile) as f:
 			i = 0
 			for line in f:
 				line = line.rstrip().split('#')[0]

@@ -104,7 +104,7 @@ def parse_blast_result(blast_XML, TF, top = 0, exclude=None, new_header=True):
 
 	result = []
 
-	with open(blast_XML) as f, open(outfile, 'w') as out:
+	with open(blast_XML) as f:
 		records = NCBIXML.parse(f)
 
 		result.append('\t'.join(('Tax-ID', 'Acc', 'Species', 'Rank', 'e-value', 'Length', 'Lineage', 'Prot-Name', 'Query-Protein')))
@@ -156,7 +156,7 @@ def combine_parsed_results(parsed_results, max_evalue, min_length):
 
 			for line in f:
 				lline = line.split('\t')
-				if float(lline[4]) <= maxevalue and int(lline[5]) >= minlength:
+				if float(lline[4]) <= max_evalue and int(lline[5]) >= min_length:
 					results.append(line.rstrip())
 
 	return '\n'.join(results)
@@ -173,7 +173,7 @@ def table_for_interactive_heatmaps(parsed_results, TF):
 
 	entries = {}
 	for filename in parsed_results:
-		with open(fname) as f:
+		with open(filename) as f:
 			next(f)
 			for line in f:
 				lline = line.split('\t')
@@ -325,14 +325,14 @@ def get_keys_and_attributes(proteinlist, treefiles, master_tree):
 
 	attributes = _get_tree_elements(master_tree, return_set = False, splitting = True)
 
-	keys = []
+	keys = {}
 
 	for i, name in enumerate(proteinlist):
 		code = _get_code(i)
-		keys[code] = name
+		keys[name] = code
 
 	for protein in treefiles:
-		taxids = _get_tree_elements(treefiles[protein].read(), return_set = True, splitting = True)
+		taxids = _get_tree_elements(open(treefiles[protein]).read(), return_set = True, splitting = True)
 		for taxid in taxids:
 			if taxid in attributes:
 				attributes[taxid].append(keys[protein])
@@ -380,7 +380,7 @@ total elements: {}
 
 interval: {}'''.format(mi, ma, np.mean(values), np.median(values), values.size, interval)
 
-	seeds = seed_lengths[protein]
+	seeds = seed_length#s[protein]
 
 	sizes = '''Seed protein(s)
 min: {}
@@ -395,6 +395,7 @@ total seeds: {}'''.format(min(seeds), max(seeds), np.average(seeds), len(seeds))
 
 	bins = list(range(middle - 50*interval, middle + interval * 50 + 1, interval))
 
+	plt.close()
 	fig = plt.figure(1, figsize=(width, height))
 	ax = fig.add_subplot(1,1,1)
 	n, bins, patches = ax.hist(values, bins=bins)
@@ -520,7 +521,7 @@ def interactive_heatmap(matrix, tick_taxa, tick_proteins, colors, template, meth
 	cproteins_printable = repr(dendro['ivl'])
 	cluster_printable = repr(clusterp).replace('(', '[').replace(')', ']')
 	cdata_printable = repr(list(zip(*data))).replace('(', '[').replace(')', ']')
-	taxa_printable = repr(tick_taxons)
+	taxa_printable = repr(tick_taxa)
 	adata_printable = repr(list(zip(*matrix))).replace('(', '[').replace(')', ']')
 	aproteins_printable = repr(tick_proteins)
 

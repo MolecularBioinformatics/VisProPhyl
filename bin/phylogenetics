@@ -2,6 +2,7 @@
 
 import sys
 import os
+import pkg_resources
 import numpy as np
 import matplotlib.pyplot as plt
 from taxfinder import TaxFinder
@@ -272,39 +273,39 @@ def init():
 	os.makedirs('fastas', exist_ok=True)
 	os.makedirs('blastresults', exist_ok=True) # In case the user runs Blast separately
 
-	orig_dir = os.path.dirname(os.path.realpath(__file__))
+	#orig_dir = os.path.dirname(os.path.realpath(__file__))
 
 	if not os.path.isfile('.gitignore'):
-		with open('.gitignore', 'w') as out, open(os.path.join(orig_dir, 'templates/gitignore')) as f:
-			out.write(f.read())
+		with open('.gitignore', 'wb') as out:
+			out.write(pkg_resources.resource_string('phylogenetics', 'templates/gitignore'))
 
 	if not os.path.isfile('limits.txt'):
-		with open('limits.txt', 'w') as out, open(os.path.join(orig_dir, 'templates/limits.txt')) as f:
-			out.write(f.read())
+		with open('limits.txt', 'wb') as out:
+			out.write(pkg_resources.resource_string('phylogenetics', 'templates/limits.txt'))
 
 	if not os.path.isfile('proteinlist.txt'):
-		with open('proteinlist.txt', 'w') as out, open(os.path.join(orig_dir, 'templates/proteinlist.txt')) as f:
-			out.write(f.read())
+		with open('proteinlist.txt', 'wb') as out:
+			out.write(pkg_resources.resource_string('phylogenetics', 'templates/proteinlist.txt'))
 
 	if not os.path.isfile('tree_config.txt'):
-		with open('tree_config.txt', 'w') as out, open(os.path.join(orig_dir, 'templates/tree_config.txt')) as f:
-			out.write(f.read())
+		with open('tree_config.txt', 'wb') as out:
+			out.write(pkg_resources.resource_string('phylogenetics', 'templates/tree_config.txt'))
 
 	if not os.path.isfile('tree_to_prune.txt'):
-		with open('tree_to_prune.txt', 'w') as out, open(os.path.join(orig_dir, 'templates/tree_to_prune.txt')) as f:
-			out.write(f.read())
+		with open('tree_to_prune.txt', 'wb') as out:
+			out.write(pkg_resources.resource_string('phylogenetics', 'templates/tree_to_prune.txt'))
 
 	if not os.path.isfile('crosshits.txt'):
-		with open('crosshits.txt', 'w') as out, open(os.path.join(orig_dir, 'templates/crosshits.txt')) as f:
-			out.write(f.read())
+		with open('crosshits.txt', 'wb') as out:
+			out.write(pkg_resources.resource_string('phylogenetics', 'templates/crosshits.txt'))
 
 	if not os.path.isfile('heatmap_config.txt'):
-		with open('heatmap_config.txt', 'w') as out, open(os.path.join(orig_dir, 'templates/heatmap_config.txt')) as f:
-			out.write(f.read())
+		with open('heatmap_config.txt', 'wb') as out:
+			out.write(pkg_resources.resource_string('phylogenetics', 'templates/heatmap_config.txt'))
 
 	if not os.path.isfile('heatmap_template.html'):
-		with open('heatmap_template.html', 'w') as out, open(os.path.join(orig_dir, 'templates/heatmap_template.html')) as f:
-			out.write(f.read())
+		with open('heatmap_template.html', 'wb') as out:
+			out.write(pkg_resources.resource_string('phylogenetics', 'templates/heatmap_template.html'))
 
 
 def run_blast(db):
@@ -342,7 +343,7 @@ def parse_blast_results(to_parse = None):
 
 	os.makedirs('resulttables', exist_ok=True)
 
-	outstring = 'Now parsing {:' + str(len(str(len(li)))) + 'd}/{}: {:<30}'
+	outstring = 'Now parsing {:' + str(len(str(len(to_parse)))) + 'd}/{}: {:<30}'
 
 	for i, filename in enumerate(to_parse):
 		basename = _my_get_basename(filename)
@@ -531,23 +532,23 @@ def show_blast_mapping():
 
 	os.makedirs('blastmappings', exist_ok=True)
 
-	filenames = sorted(CR.get_protein_files())
+	proteinnames = sorted(CR.get_protein_files())
 
-	for filename in filenames:
-		print('Mapping {:<50}'.format(filename), end='\r')
+	for proteinname in proteinnames:
+		print('Mapping {:<50}'.format(proteinname), end='\r')
 
 		query_length = 0
-		with open('fastas/{}.fasta'.format(filename)) as f:
+		with open('fastas/{}.fasta'.format(proteinname)) as f:
 			next(f)
 			for line in f:
 				query_length += len(line.rstrip())
 
-		filename = 'blastresults/{}.xml'.format(filename)
+		filename = 'blastresults/{}.xml'.format(proteinname)
 
 		im = phylo.show_blast_mapping(filename, query_length)
 
 		#im.show()
-		im.save('blastmappings/{}.png'.format(filename))
+		im.save('blastmappings/{}.png'.format(proteinname))
 
 
 def similarity_matrix():
@@ -559,13 +560,14 @@ def similarity_matrix():
 	'''
 
 	names = {name: 'combinedtables/{}.tsv'.format(name) for name in CR.get_protein_names()}
+	sorted_names = sorted(names)
 
 	res = phylo.similarity_matrix(names)
 
 	with open('matrix.csv', 'w') as out:
-		out.write('\t' + '\t'.join(sorted(names)) + '\n')
+		out.write('\t' + '\t'.join(sorted_names) + '\n')
 		for i, line in enumerate(res):
-			out.write(names[i] + '\t' + '\t'.join(map(str, line)) + '\n')
+			out.write(sorted_names[i] + '\t' + '\t'.join(map(str, line)) + '\n')
 
 
 def int_heatmap():
@@ -583,10 +585,10 @@ def int_heatmap():
 	template = open('heatmap_template.html').read()
 
 	taxids = {}
-	tick_taxons = []
+	tick_taxa = []
 	for i, tax in enumerate(taxa_to_check):
 		taxname, taxid = tax.split('^')
-		tick_taxons.append(taxname.replace('_', ' '))
+		tick_taxa.append(taxname.replace('_', ' '))
 		taxids[taxid] = i
 
 	tick_proteins = proteins_to_check[:]
@@ -713,7 +715,10 @@ def cross_histograms():
 	### NOT DESCRIPTION YET!!!
 	'''
 
-	combos = [f[:-4] for f in os.listdir('crosshits') if f.endswith('.tsv')]
+	try:
+		combos = [f[:-4] for f in os.listdir('crosshits') if f.endswith('.tsv')]
+	except IOError:
+		return
 	data = {}
 
 	for c in combos:

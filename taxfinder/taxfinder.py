@@ -4,6 +4,7 @@ import re
 import os
 import pickle
 
+
 class TaxFinder():
 
 	def __init__(self):
