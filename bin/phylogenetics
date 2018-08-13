@@ -2,11 +2,8 @@
 
 import sys
 import os
-import math
 import numpy as np
 import matplotlib.pyplot as plt
-from PIL import Image, ImageDraw, ImageFont
-from Bio.Blast import NCBIXML
 from taxfinder import TaxFinder
 from collections import defaultdict
 
@@ -15,7 +12,7 @@ from phylogenetics import phylogenetics as phylo
 
 class ConfigReader():
 	'''
-	The ConfigReader reads the `limits.txt` and `proteinlist.txt` and return the contents in different formats upon request.
+	The ConfigReader reads the `limits.txt`, `proteinlist.txt`, `heatmap_config.txt`, and `crosshits.txt` and returns the contents in different formats upon request.
 	'''
 
 	def __init__(self):
@@ -29,6 +26,8 @@ class ConfigReader():
 		self.taxa_to_show = []
 		self.hm_colors = {}
 		self.clustering_method = ''
+		self.crosshits_to_analyse = []
+		self.crosscrosshits = []
 
 		self._read_proteinlist()
 		self._read_limits()
@@ -198,6 +197,48 @@ class ConfigReader():
 
 		return self.clustering_method
 
+
+	def _read_crosshits(self):
+		'''
+		Reads `crosshits.txt` and saves the content as list(s) to be used by the get* methods.
+		'''
+
+		with open('crosshits.txt') as f:
+			self.crosshits_to_analyse = []
+			for line in f:
+				line = line.split('#')[0].rstrip()
+				if not line:
+					continue
+
+				if line.startswith('!crosscrosshits'):
+					if line == '!crosscrosshits':
+						self.crosscrosshits = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 50]
+					else:
+						self.crosscrosshits = sorted([int(x) for x in line.split()[1:]])
+					continue
+
+				self.crosshits_to_analyse.append(line)
+
+
+	def get_crosshits_to_analyse(self):
+		'''
+		Returns a list with the protein names to use for the crosshit analysis.
+
+		:returns: A list of protein names
+		'''
+
+		return self.crosshits_to_analyse
+
+
+	def get_crosscrosshits(self):
+		'''
+		Returns a list with the clustering borders (ints) for crosscrosshits.
+
+		:returns: A list of clustering borders (ints)
+		'''
+
+		return self.crosscrosshits
+
 	# end ConfigReader
 
 
@@ -221,6 +262,8 @@ def init():
 	:creates: proteinlist.txt
 	:creates: tree_config.txt
 	:creates: tree_to_prune.txt
+	:creates: crosshits.txt
+	:creates: heatmap_config.txt
 	:creates: heatmap_template.html
 	:creates: fastas/
 	:creates: blastresults/
@@ -251,6 +294,10 @@ def init():
 		with open('tree_to_prune.txt', 'w') as out, open(os.path.join(orig_dir, 'templates/tree_to_prune.txt')) as f:
 			out.write(f.read())
 
+	if not os.path.isfile('crosshits.txt'):
+		with open('crosshits.txt', 'w') as out, open(os.path.join(orig_dir, 'templates/crosshits.txt')) as f:
+			out.write(f.read())
+
 	if not os.path.isfile('heatmap_config.txt'):
 		with open('heatmap_config.txt', 'w') as out, open(os.path.join(orig_dir, 'templates/heatmap_config.txt')) as f:
 			out.write(f.read())
@@ -259,14 +306,10 @@ def init():
 		with open('heatmap_template.html', 'w') as out, open(os.path.join(orig_dir, 'templates/heatmap_template.html')) as f:
 			out.write(f.read())
 
-	if not os.path.isfile('crosshits.txt'):
-		with open('crosshits.txt', 'w') as out, open(os.path.join(orig_dir, 'templates/crosshits.txt')) as f:
-			out.write(f.read())
-
 
 def run_blast(db):
 	'''
-	Blasts a list of files.
+	Blasts a list of files with Blastp against the provided database.
 
 	:param db: The database to blast against
 	:creates: `blastresults/*.xml`
@@ -286,26 +329,24 @@ def run_blast(db):
 		phylo.run_blastp(filename, outfilename, db)
 
 
-def parse_blast_results(do_only = None):
+def parse_blast_results(to_parse = None):
 	'''
-	Parses Blast results.
+	Parses Blast results to a table (tsv file).
 
-	:param do_only: Should be an iterable with filenames that shall be parsed. If all files in `blastresults` shall be parsed, this must evaluate to False.
+	:param to_parse: Should be an iterable with filenames that shall be parsed. If all files in `blastresults` shall be parsed, this must be None.
 	:creates: `resulttables/*.tsv`
 	'''
 
-	if do_only:
-		li = do_only
-	else:
-		li = CR.get_protein_files(prefix = 'blastresults/', suffix = '.xml')
+	if to_parse is None:
+		to_parse = CR.get_protein_files(prefix = 'blastresults/', suffix = '.xml')
 
 	os.makedirs('resulttables', exist_ok=True)
 
 	outstring = 'Now parsing {:' + str(len(str(len(li)))) + 'd}/{}: {:<30}'
 
-	for i, filename in enumerate(li):
+	for i, filename in enumerate(to_parse):
 		basename = _my_get_basename(filename)
-		print(outstring.format(i+1, len(li), basename), end='\r')
+		print(outstring.format(i+1, len(to_parse), basename), end='\r')
 		parsed_result = phylo.parse_blast_result(filename, TF = TF, top = 0, exclude={118797, 59538, 7213})
 		# Contaminants:
 		#    118797: Lipotes vexillifer
@@ -317,7 +358,7 @@ def parse_blast_results(do_only = None):
 
 def combine_parsed_results():
 	'''
-	Combines parsed Blast results.
+	Combines parsed Blast results according on proteinlist.txt.
 
 	:creates: `combinedtables/*.tsv`
 	'''
@@ -365,7 +406,7 @@ def tables_for_interactive_heatmap():
 
 def unique_names():
 	'''
-	For each protein, creates lists with the species that possess this protein. Two lists are generated: One with unique Species names and one with unique taxonomy ids. In addition a general.names and general.taxids are generated with all Species that occur in the lists of all proteins.
+	For each protein, creates lists with the species that possess this protein. Two lists are generated: One with unique species names and one with unique taxonomy ids. In addition a general.names and general.taxids are generated with all species that occur in the lists of all proteins.
 
 	:creates: `names/*.names`
 	:creates: `taxids/*.taxids`
@@ -378,7 +419,7 @@ def unique_names():
 	total_taxids = set()
 
 	for fn in CR.get_protein_names():
-		names, taxids = phylo.unique_names_and_taxids(fn)
+		names, taxids = phylo.unique_names_and_taxids('combinedtables/{}.tsv'.format(fn))
 
 		with open('names/{}.names'.format(fn), 'w') as f:
 			for name in names:
@@ -402,19 +443,19 @@ def unique_names():
 
 def make_newick():
 	'''
-	Creates Newick trees for every taxonomy-id list in the taxids folder.
+	Creates Newick trees for every taxonomy id list in the taxids folder.
 
 	:creates: `trees/*.tre`
 	'''
 
-	li = CR.get_protein_names(prefix = 'taxids/', suffix = '.taxids')
-	li.add('taxids/general.taxids')
+	todo = CR.get_protein_names(prefix = 'taxids/', suffix = '.taxids')
+	todo.add('taxids/general.taxids')
 
 	os.makedirs('trees', exist_ok=True)
 
 	sanitizer = phylo.NodeSanitizer()
 
-	for filename in li:
+	for filename in todo:
 		outfn = 'trees/{}.tre'.format(_my_get_basename(filename))
 		newick = phylo.make_newick(filename, sanitizer, TF)
 
@@ -433,7 +474,7 @@ def tree_attributes():
 	'''
 
 	proteinlist = sorted(CR.get_protein_names())
-	filenames = ['trees/{}.tre'.format(name) for name in proteinlist]
+	filenames = {name: 'trees/{}.tre'.format(name) for name in proteinlist}
 
 	master_tree = open('trees/general.tre').read()
 
@@ -475,64 +516,10 @@ def make_histograms():
 	for protein in sorted(protein_files):
 		fn = 'combinedtables/{}.tsv'.format(protein)
 		print('Histogram: {:<50}'.format(protein), end='\r')
-		values = np.loadtxt(fn, dtype=np.int, comments=None, delimiter='\t', skiprows=1, usecols=(5,))
 
-		mi = np.amin(values)
-		ma = np.amax(values)
-
-		if ma - mi <= 1000:
-			interval = 10
-		elif ma - mi <= 2000:
-			interval = 20
-		elif ma - mi <= 2500:
-			interval = 25
-		elif ma - mi <= 5000:
-			interval = 50
-		else:
-			interval = 100
-
-		text = '''Distribution
-min: {}
-max: {}
-average: {:.0f}
-median: {:.0f}
-total elements: {}
-
-interval: {}'''.format(mi, ma, np.mean(values), np.median(values), values.size, interval)
-
-		seeds = seed_lengths[protein]
-
-		sizes = '''Seed protein(s)
-min: {}
-max: {}
-average: {:.0f}
-total seeds: {}'''.format(min(seeds), max(seeds), np.average(seeds), len(seeds))
-
-		middle = int(ma/2 + mi/2)
-		middle -= int(middle % interval)
-		if middle - 50*interval < 0:
-			middle = 50*interval
-
-		bins = list(range(middle - 50*interval, middle + interval * 50 + 1, interval))
-
-		fig = plt.figure(1, figsize=(12,6))
-		ax = fig.add_subplot(1,1,1)
-		n, bins, patches = ax.hist(values, bins=bins)
-
-		# The following block is to color the bars
-		bin_centers = 0.5 * (bins[:-1] + bins[1:])
-		col = bin_centers - min(bin_centers)
-		col /= max(col)
-		for c, p in zip(col, patches):
-			plt.setp(p, 'facecolor', cm(c))
-
-		ax.text(0.05, 0.95, text, transform=ax.transAxes, horizontalalignment='left', verticalalignment='top')
-
-		ax.text(0.95, 0.95, sizes, transform=ax.transAxes, horizontalalignment='right', verticalalignment='top')
+		fig = phylo.make_histogram(fn, seed_lengths[protein], colormap = cm)
 
 		fig.savefig('histograms/{}.png'.format(protein))
-
-		fig.clear()
 
 
 def show_blast_mapping():
@@ -546,8 +533,6 @@ def show_blast_mapping():
 
 	filenames = sorted(CR.get_protein_files())
 
-	fnt = ImageFont.load_default()
-
 	for filename in filenames:
 		print('Mapping {:<50}'.format(filename), end='\r')
 
@@ -557,57 +542,9 @@ def show_blast_mapping():
 			for line in f:
 				query_length += len(line.rstrip())
 
-		counters = [np.zeros(query_length, np.int) for x in range(6)]
-		num_hsps = [0] * 6
+		filename = 'blastresults/{}.xml'.format(filename)
 
-		with open('blastresults/{}.xml'.format(filename)) as f:
-			records = NCBIXML.parse(f)
-
-			for record in records:
-				for alignment in record.alignments:
-					for hsp in alignment.hsps:
-						if hsp.expect > 1e-15:
-							n = 0
-						elif hsp.expect > 1e-30:
-							n = 1
-						elif hsp.expect > 1e-60:
-							n = 2
-						elif hsp.expect > 1e-90:
-							n = 3
-						elif hsp.expect > 1e-120:
-							n = 4
-						else:
-							n = 5
-						counters[n][hsp.query_start - 1:hsp.query_end - 1] += 1
-						num_hsps[n] += 1
-
-		ma = [np.amax(counters[n]) * 0.01 for n in range(6)]
-
-		counters = [counters[n] / ma[n] if ma[n] != 0 else np.ones(query_length, np.int) for n in range(6)]
-
-
-		im = Image.new('RGB', (query_length + 60, 600), (255, 255, 255))
-		dr = ImageDraw.Draw(im)
-
-		dr.text((2, 40), '> 1e-15', (0, 0, 0), fnt)
-		dr.text((2, 140), '> 1e-30', (0, 0, 0), fnt)
-		dr.text((2, 240), '> 1e-60', (0, 0, 0), fnt)
-		dr.text((2, 340), '> 1e-90', (0, 0, 0), fnt)
-		dr.text((2, 440), '> 1e-120', (0, 0, 0), fnt)
-		dr.text((2, 540), '<= 1e-120', (0, 0, 0), fnt)
-
-		for n in range(6):
-			dr.text((2, 60 + 100 * n), 'n = {}'.format(num_hsps[n]), (0, 0, 0), fnt)
-
-		colors = [(0, 0, 0), (0, 0, 200), (0, 200, 0), (200, 0, 200), (200, 0, 0), (150, 150, 0)]
-
-		for n in range(int(query_length / 100)):
-			col = 160 + n*100
-			dr.line([(col, 0), (col, 600)], fill=(125, 125, 125), width=1)
-
-		for n in range(6):
-			for col, thickness in enumerate(counters[n]):
-				dr.line([(col + 60, n*100), (col + 60, thickness + n*100)], fill=colors[n], width=1)
+		im = phylo.show_blast_mapping(filename, query_length)
 
 		#im.show()
 		im.save('blastmappings/{}.png'.format(filename))
@@ -668,46 +605,35 @@ def int_heatmap():
 	open('out.html', 'w').write(html)
 
 
-# adapted from similarity_matrix
-def get_crosshits(do_only = None, crosscrosshits = False):
+### not moved to the module, yet.
+def get_crosshits(to_analyse = None, crosscrosshits = None):
 	'''
 	For each pair of proteins creates a file '{protein1}-{protein2}-crosshits.tsv'
 	File has three columns: e-value, number of crosshits, AccID^TaxID for all crosshits (comma-separated)
-	Will use the config file 'crosshits.txt', unless given a list of proteins in 'do_only'.
 
-	:param do_only: Should be an iterable with proteinnames that shall be used. If it's Falsy proteins in 'crosshits.txt' will be used instead.
+	:param to_analyse: Should be a list with proteinnames that shall be used. If it evaluates to False, proteins in `crosshits.txt` will be used instead.
+	:param crosscrosshits: A list with clustering borders for crosscrosshits. If not given, it will be tried to be read from `crosshits.txt`. To disable crosscrosshitting, omit or give None.
 	:creates: `crosshits/*.tsv`
 	'''
 
-	if do_only:
-		li = do_only
-	else:
-		with open('crosshits.txt') as f:
-			li = list()
-			for line in f:
-				line = line.rstrip('\n').split('#')[0]
-				# no empty lines
-				if not line:
-					continue
+	if to_analyse is None:
+		to_analyse = CR.get_crosshits_to_analyse()
 
-				# This is the only '!...' parameter right now, more could be added
-				if line.startswith('!'):
-					if line[1:] == 'crosscrosshits':
-						crosscrosshits = True
-						groups = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 50]
-					if line[1:] == 'groups':
-						groups = sorted(map(int, line[1:].split()))
-					continue
+	if crosscrosshits is None:
+		crosscrosshits = CR.get_crosscrosshits()
 
-				li += [line]
+	if not to_analyse:
+		return
 
 	os.makedirs('crosshits', exist_ok=True)
 
 	values = {}
-	# set is important! the combined tables dont have unique entries
-	taxids = defaultdict(set)
 
-	for name in li:
+	if crosscrosshits:
+		# set is important! the combined tables don't have unique entries
+		taxids = defaultdict(set)
+
+	for name in to_analyse:
 		values[name] = [set() for _ in range(151)]
 		with open('combinedtables/{}.tsv'.format(name)) as f:
 			next(f)
@@ -723,11 +649,11 @@ def get_crosshits(do_only = None, crosscrosshits = False):
 				else:
 					evalue = 0
 				acc = lline[1]
-				tax = lline[0]
+				taxid = lline[0]
 				# Adding TaxID for later use, Acc-IDs are already unique (and implicate tax-id) so this should change anything
-				values[name][evalue].add(acc+'^'+tax)
+				values[name][evalue].add(acc+'^'+taxid)
 				if crosscrosshits:
-					taxids[tax].add(acc)
+					taxids[taxid].add(acc)
 
 	names = sorted(values)
 
@@ -746,33 +672,32 @@ def get_crosshits(do_only = None, crosscrosshits = False):
 				common[evalue] = inter - oldhits # only write those hits that are new for this evalue
 				oldhits.update(inter)
 
-			with open("crosshits/{0}-{1}.tsv".format(name1, name2), "w") as outf:
-				outf.write('#e-value\tnumber-of-crosshits\tAccID^TaxID comma-sep\n')
+			with open('crosshits/{}-{}.tsv'.format(name1, name2), 'w') as out:
+				out.write('#e-value\tnumber-of-crosshits\tAccID^TaxID comma-sep\n')
 				for j, line in enumerate(common):
-					vals = (j, len(line), ",".join(list(line)))
-					outf.write('{0}\t{1}\t{2}\n'.format(*vals))
+					out.write('{}\t{}\t{}\n'.format(j, len(line), ','.join(list(line))))
 
 			if crosscrosshits:
 				last = []
 				cchits = defaultdict(list)
 				for entry in oldhits:
 					tax = entry.split('^')[1]
-					for n in groups:
+					for n in crosscrosshits:
 						if len(taxids[tax]) <= n:
 							cchits[n].append(tax)
 							break
 					else:
-						last = [groups[-1]+1]
-						cchits[groups[-1]+1].append(tax)
+						last = [crosscrosshits[-1]+1]
+						cchits[crosscrosshits[-1]+1].append(tax)
 
-				with open("crosshits/{0}-{1}-crosscrosshits.csv".format(name1, name2), "w") as out:
+				with open('crosshits/{}-{}-crosscrosshits.csv'.format(name1, name2), 'w') as out:
 					out.write('#This file contains clusters of crosscrosshits\n')
-					for n in groups+last:
+					for n in crosscrosshits + last:
 						if n in last:
 							out.write('!>{} crosshits per species\n'.format(n-1))
-						elif n-1 and n-1 not in groups:
-							if groups.index(n):
-								lower = groups[groups.index(n) - 1] + 1
+						elif n-1 and n-1 not in crosscrosshits:
+							if crosscrosshits.index(n):
+								lower = crosscrosshits[crosscrosshits.index(n) - 1] + 1
 							else:
 								lower = 1
 							out.write('!{} - {} crosshits per species\n'.format(lower, n))
@@ -782,7 +707,12 @@ def get_crosshits(do_only = None, crosscrosshits = False):
 						out.write(','.join(cchits[n])+'\n')
 
 
+### not moved to the module, yet.
 def cross_histograms():
+	'''
+	### NOT DESCRIPTION YET!!!
+	'''
+
 	combos = [f[:-4] for f in os.listdir('crosshits') if f.endswith('.tsv')]
 	data = {}
 
@@ -836,17 +766,17 @@ def cross_histograms():
 
 tasknames = ['blast', 'parse', 'combine', 'comheat', 'unique', 'newick', 'attrib', 'hist', 'map', 'intheat', 'matrix', 'crosshits', 'crosshist']
 
-tasks = {'blast': ('run Blast', run_blast), # ok
-'parse': ('parse Blast results', parse_blast_results), # ok
-'combine': ('combine parsed results', combine_parsed_results), # ok
-'comheat': ('combine parsed results for heatmaps', tables_for_interactive_heatmap), # ok
-'unique': ('create unique lists of names and taxids', unique_names), # ok
-'newick': ('create Newick tree for each protein', make_newick), # ok
-'attrib': ('determine tree attributes', tree_attributes), # ok
+tasks = {'blast': ('run Blast', run_blast),
+'parse': ('parse Blast results', parse_blast_results),
+'combine': ('combine parsed results', combine_parsed_results),
+'comheat': ('combine parsed results for heatmaps', tables_for_interactive_heatmap),
+'unique': ('create unique lists of names and taxids', unique_names),
+'newick': ('create Newick tree for each protein', make_newick),
+'attrib': ('determine tree attributes', tree_attributes),
 'hist': ('create histograms with Blast hits for each protein', make_histograms),
 'map': ('create hit mapping diagrams for each protein', show_blast_mapping),
-'intheat': ('create an interactive heatmap (html)', int_heatmap), # ok
-'matrix': ('create a similarity matrix of all proteins', similarity_matrix), # ok
+'intheat': ('create an interactive heatmap (html)', int_heatmap),
+'matrix': ('create a similarity matrix of all proteins', similarity_matrix),
 'crosshits': ('create files with all blast crosshits of certain proteins', get_crosshits),
 'crosshist': ('creates Histograms of e-value distribution for crosshits', cross_histograms)}
 
@@ -880,7 +810,7 @@ if __name__ == '__main__':
 	import argparse
 	import textwrap
 
-	workflow = '\n'.join(textwrap.wrap("""The following is a list of the workflow. The names or numbers can be used for the -s or -o arguments.""", width = 80))
+	workflow = '\n'.join(textwrap.wrap('''The following is a list of the workflow. The names or numbers can be used for the -s or -o arguments.''', width = 80))
 
 	workflow += '\n\n' + '\n'.join(('{:>2}. {:<8} {}'.format(i, name, tasks[name][0]) for i, name in enumerate(tasknames)))
 

@@ -2,8 +2,11 @@
 
 import sys
 import math
+import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 import scipy.cluster.hierarchy as hierarchy
+from PIL import Image, ImageDraw, ImageFont
 from Bio.Blast import NCBIXML
 from Bio.Blast.Applications import NcbiblastpCommandline
 from multiprocessing import cpu_count
@@ -11,7 +14,7 @@ from multiprocessing import cpu_count
 
 class NodeSanitizer():
 	'''
-	The NoteSanitizer is needed to create Newick files. It filters out bad characters and replaces them with allowed, similar characters. If there were unknown characters, they are printed out.
+	The NodeSanitizer is needed to create Newick files. It filters out bad characters and replaces them with allowed, similar characters. If there were unknown characters, they can be printed out.
 	'''
 
 	def __init__(self):
@@ -21,12 +24,12 @@ class NodeSanitizer():
 
 		self.bad_chars = set()
 		self.good_chars = {'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', ' ', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '^', '_', '=', '-', '/', '.', '*'}
-		self.to_replace = {'(': '<', ')': '>', '[': '<', ']': '>', '#': '_', ':': '_', '+': '', "'": '', ',': '_'}
+		self.to_replace = {'(': '<', ')': '>', '[': '<', ']': '>', '#': '_', ':': '_', '+': '_', "'": '_', ',': '_'}
 
 
 	def sanitize(self, nodes):
 		'''
-		Goes through a list of nodes and replace bad characters.
+		Goes through a list of nodes and replaces bad characters.
 
 		:param nodes: The list of nodes (list of strings) to be sanitized
 		:returns: A list with sanitized nodes (strings)
@@ -85,16 +88,16 @@ def parse_blast_result(blast_XML, TF, top = 0, exclude=None, new_header=True):
 	'''
 	Parses Blast result XML files and writes the best or all results with less information in a tsv file.
 
-	:param blast_XML: The filename of the Blast output (must be output type 5)
+	:param blast_XML: The filename of the Blast output (must be Blast output type 5)
 	:param TF: An instance of the TaxFinder class
-	:param top: Write only the best `top` hits to file. If `top` is 0, all hits are saved.
-	:param contaminants: Set with taxids of species to exclude from the results
-	:param new_header: Where the Blast results produced with new headers (database from 2016 and newer)?
-	:returns: csv table as string with the results
+	:param top: Return only the best `top` hits. If `top` is 0, all hits are returned.
+	:param exclude: Set with taxids of species to exclude from the results
+	:param new_header: Were the Blast results produced with new headers (database from 2016 and newer)?
+	:returns: tsv table as string with the results
 	'''
 
-	if contaminants is None:
-		contaminants = set()
+	if exclude is None:
+		exclude = set()
 
 	if top < 0:
 		top = 0
@@ -114,7 +117,7 @@ def parse_blast_result(blast_XML, TF, top = 0, exclude=None, new_header=True):
 				infos = TF.getInfoFromHitDef(alignment.hit_id, alignment.hit_def, newHeader = new_header)
 
 				for info in infos:
-					if info['taxid'] in contaminants:
+					if info['taxid'] in exclude:
 						continue
 
 					lineage = ', '.join(TF.getLineage(info['taxid'], display = 'name'))
@@ -131,10 +134,19 @@ def parse_blast_result(blast_XML, TF, top = 0, exclude=None, new_header=True):
 
 
 def combine_parsed_results(parsed_results, max_evalue, min_length):
+	'''
+	Combine parsed results to a tsv table.
+
+	:param parsed_results: List of filenames with parsed blast results to combine
+	:param max_evalue: Highest e-value to include (float)
+	:param min_length: Minimal length to include (int)
+	:returns: String of a tsv with the combined table
+	'''
+
 	header = True
 	results = []
-	for fname in parsed_results:
-		with open(fname) as f:
+	for filename in parsed_results:
+		with open(filename) as f:
 			# Only copy the header once, no matter how many files are parsed
 			if header:
 				results.append(next(f).rstrip())
@@ -150,9 +162,17 @@ def combine_parsed_results(parsed_results, max_evalue, min_length):
 	return '\n'.join(results)
 
 
-def table_for_interactive_heatmaps(filenames, TF):
+def table_for_interactive_heatmaps(parsed_results, TF):
+	'''
+	Combine parsed results to a table for creation of interactive tables.
+
+	:param parsed_results: List of filenames with parsed blast results to combine
+	:param TF: Instance of taxfinder.TaxFinder
+	:returns: dict with a mapping from taxonomy id to evalue
+	'''
+
 	entries = {}
-	for filename in filenames:
+	for filename in parsed_results:
 		with open(fname) as f:
 			next(f)
 			for line in f:
@@ -183,11 +203,18 @@ def table_for_interactive_heatmaps(filenames, TF):
 	return entries
 
 
-def unique_names_and_taxids(filename):
+def unique_names_and_taxids(comb_table):
+	'''
+	Extract all names and taxonomy ids from a combined table and return them as lists with unique entries.
+
+	:param comb_table: Filename of a combined table to extract names and taxids from
+	:returns: Tuple of two lists; the unique names (strs) and taxonomy ids (ints)
+	'''
+
 	names = set()
 	taxids = set()
 
-	with open('combinedtables/{}.tsv'.format(fn)) as f:
+	with open(comb_table) as f:
 		next(f)
 		for line in f:
 			elems = line.split('\t')
@@ -201,6 +228,15 @@ def unique_names_and_taxids(filename):
 
 
 def make_newick(filename, sanitizer, TF):
+	'''
+	Creates a Newick tree from a list of taxonomy ids. The relationships of the given taxonomy ids are derived automatically using the taxfinder.TaxFinder.
+
+	:param filename: Filename of a file with one taxonomy id per line of the taxa to include in the tree
+	:param sanitizer: Instance of phylogenetics.NodeSanitizer
+	:param TF: Instance of taxfinder.TaxFinder
+	:returns: String with the Newick representation of the tree
+	'''
+
 	with open(filename) as f:
 		lineages = []
 
@@ -233,10 +269,11 @@ def make_newick(filename, sanitizer, TF):
 
 def _get_tree_elements(tree, return_set = False, splitting = True):
 	'''
+	Extract all nodes from a Newick tree.
 
 	:param tree: The Newick tree as a string
-	:param return_set: Shall the tree elements be returned as a set (True) or a dictionary where each element points to an empty list (False)?
-	:param splitting: If the Newick tree elements are in the form `Name^Taxid`, this must be True. If it is in the form `taxid`, this must be False.
+	:param return_set: Return the tree elements as a set (True) or a dictionary where each element points to an empty list (False)?
+	:param splitting: If the Newick tree elements are in the form `Name^Taxid`, this must be True. If they are in the form `taxid`, this must be False.
 	:returns: Either a list with taxonomy ids or a dictionary with taxonomy ids as keys and empty lists as value, depending on `return_set`
 	'''
 
@@ -272,10 +309,20 @@ def _get_code(number):
 	:returns: The two-character code
 	'''
 
+	# 97 = ord('a'); 65 = ord('A')
 	return chr((int(number/26) % 26) + 97) + chr((number % 26) + 65)
 
 
-def get_keys_and_attributes(proteinlist, filenames, master_tree):
+def get_keys_and_attributes(proteinlist, treefiles, master_tree):
+	'''
+	Create a protein/two-letter-key table and a table with the presence of proteins in taxa.
+
+	:param proteinlist: List of proteins to look for
+	:param treefiles: Dict of `protein name`: `filenames of trees (Newick!)` two check for presence of taxonomy ids
+	:param master_tree: The tree to use for extraction of taxonomy ids
+	:returns: A tuple of two dicts; the two-letter-code to protein name and taxonomy id to two-letter-code
+	'''
+
 	attributes = _get_tree_elements(master_tree, return_set = False, splitting = True)
 
 	keys = []
@@ -284,16 +331,166 @@ def get_keys_and_attributes(proteinlist, filenames, master_tree):
 		code = _get_code(i)
 		keys[code] = name
 
-	for filename in filenames:
-		elements = _get_tree_elements(filename.read(), return_set = True, splitting = True)
-		for element in elements:
-			if element in attributes:
-				attributes[element].append(code)
+	for protein in treefiles:
+		taxids = _get_tree_elements(treefiles[protein].read(), return_set = True, splitting = True)
+		for taxid in taxids:
+			if taxid in attributes:
+				attributes[taxid].append(keys[protein])
 
 	return keys, attributes
 
 
+def make_histogram(combined_table, seed_length, width = 12, height = 6, colormap = None):
+	'''
+	Create a histogram showing the lengths of the blast hits for the query protein, helping to identify length cut-offs for Blast results.
+
+	:param combined_table: Filename of the combined table of the query protein
+	:param seed_length: Length of the query protein
+	:param width: Width of the output figure (in inch)
+	:param height: Height of the output figure (in inch)
+	:param colormap: Instance of a matplotlib.cm.ScalarMappable (colormap). If this is None, the `rainbow` colormap will be used.
+	:returns: Instance of matplotlib.pyplot.figure with the histogram
+	'''
+
+	if colormap is None:
+		colormap = plt.cm.get_cmap('rainbow')
+
+	values = np.loadtxt(combined_table, dtype=np.int, comments=None, delimiter='\t', skiprows=1, usecols=(5,))
+
+	mi = np.amin(values)
+	ma = np.amax(values)
+
+	if ma - mi <= 1000:
+		interval = 10
+	elif ma - mi <= 2000:
+		interval = 20
+	elif ma - mi <= 2500:
+		interval = 25
+	elif ma - mi <= 5000:
+		interval = 50
+	else:
+		interval = 100
+
+	text = '''Distribution
+min: {}
+max: {}
+average: {:.0f}
+median: {:.0f}
+total elements: {}
+
+interval: {}'''.format(mi, ma, np.mean(values), np.median(values), values.size, interval)
+
+	seeds = seed_lengths[protein]
+
+	sizes = '''Seed protein(s)
+min: {}
+max: {}
+average: {:.0f}
+total seeds: {}'''.format(min(seeds), max(seeds), np.average(seeds), len(seeds))
+
+	middle = int(ma/2 + mi/2)
+	middle -= int(middle % interval)
+	if middle - 50*interval < 0:
+		middle = 50*interval
+
+	bins = list(range(middle - 50*interval, middle + interval * 50 + 1, interval))
+
+	fig = plt.figure(1, figsize=(width, height))
+	ax = fig.add_subplot(1,1,1)
+	n, bins, patches = ax.hist(values, bins=bins)
+
+	# The following block is to color the bars
+	bin_centers = 0.5 * (bins[:-1] + bins[1:])
+	col = bin_centers - min(bin_centers)
+	col /= max(col)
+	for c, p in zip(col, patches):
+		plt.setp(p, 'facecolor', colormap(c))
+
+	ax.text(0.05, 0.95, text, transform=ax.transAxes, horizontalalignment='left', verticalalignment='top')
+
+	ax.text(0.95, 0.95, sizes, transform=ax.transAxes, horizontalalignment='right', verticalalignment='top')
+
+	return fig
+
+
+def show_blast_mapping(blast_result_file, query_length):
+	'''
+	Create an overview over where the Blast hits are mapped on the query protein.
+
+	:param blast_result_file: The filename of a blast result (output 5!)
+	:param query_length: Length of the query protein
+	:returns: Instance of PIL.Image with the image
+	'''
+
+	fnt = ImageFont.load_default()
+
+	counters = [np.zeros(query_length, np.int) for x in range(6)]
+	num_hsps = [0] * 6
+
+	with open(blast_result_file) as f:
+		records = NCBIXML.parse(f)
+
+		for record in records:
+			for alignment in record.alignments:
+				for hsp in alignment.hsps:
+					if hsp.expect > 1e-15:
+						n = 0
+					elif hsp.expect > 1e-30:
+						n = 1
+					elif hsp.expect > 1e-60:
+						n = 2
+					elif hsp.expect > 1e-90:
+						n = 3
+					elif hsp.expect > 1e-120:
+						n = 4
+					else:
+						n = 5
+					counters[n][hsp.query_start - 1:hsp.query_end - 1] += 1
+					num_hsps[n] += 1
+
+	ma = [np.amax(counters[n]) * 0.01 for n in range(6)]
+
+	counters = [counters[n] / ma[n] if ma[n] != 0 else np.ones(query_length, np.int) for n in range(6)]
+
+	im = Image.new('RGB', (query_length + 60, 600), (255, 255, 255))
+	dr = ImageDraw.Draw(im)
+
+	dr.text((2, 40), '> 1e-15', (0, 0, 0), fnt)
+	dr.text((2, 140), '> 1e-30', (0, 0, 0), fnt)
+	dr.text((2, 240), '> 1e-60', (0, 0, 0), fnt)
+	dr.text((2, 340), '> 1e-90', (0, 0, 0), fnt)
+	dr.text((2, 440), '> 1e-120', (0, 0, 0), fnt)
+	dr.text((2, 540), '<= 1e-120', (0, 0, 0), fnt)
+
+	for n in range(6):
+		dr.text((2, 60 + 100 * n), 'n = {}'.format(num_hsps[n]), (0, 0, 0), fnt)
+
+	colors = [(0, 0, 0), (0, 0, 200), (0, 200, 0), (200, 0, 200), (200, 0, 0), (150, 150, 0)]
+
+	for n in range(int(query_length / 100)):
+		col = 160 + n*100
+		dr.line([(col, 0), (col, 600)], fill=(125, 125, 125), width=1)
+
+	for n in range(6):
+		for col, thickness in enumerate(counters[n]):
+			dr.line([(col + 60, n*100), (col + 60, thickness + n*100)], fill=colors[n], width=1)
+
+	return im
+
+
 def interactive_heatmap(matrix, tick_taxa, tick_proteins, colors, template, method):
+	'''
+	Create an interactive heatmap with HTML/JavaScript showing in which species proteins are found.
+
+	:param matrix: List of lists with integers indication the -log(evalue) of a protein in a taxon. The first level (`matrix[x]`) should fit to `tick_proteins` and the second level (`matrix[…][x]`) should fit to `tick_taxa` and contain the -log(evalue) of that taxon to the protein.
+	:param tick_taxa: List of taxa as strings
+	:param tick_proteins: List of proteins as strings
+	:param colors: Dict with five elements, mapping letters 'grcbm' (green, red, cyan, blue, magenta) to HTML color codes.
+	:param template: HTML template to use for the output.
+	:param method: Which clustering method to use (str). See scipy.cluster.hierarchy.linkage for options.
+	:returns: HTML as string
+	'''
+
 	pdmatrix = pd.DataFrame(matrix, columns = tick_taxa, index = tick_proteins)
 
 	linkage = hierarchy.linkage(pdmatrix, method=method)
@@ -333,7 +530,12 @@ def interactive_heatmap(matrix, tick_taxa, tick_proteins, colors, template, meth
 
 
 def similarity_matrix(names):
-	''' names is a dict: names[name] = filename '''
+	'''
+	Create a similarity matrix showing the best evalue of the best hit that is shared by two query proteins.
+
+	:param names: Dict mapping the protein name to a filename
+	:returns: The similarity matrix as tsv string
+	'''
 
 	sorted_names = sorted(names)
 
