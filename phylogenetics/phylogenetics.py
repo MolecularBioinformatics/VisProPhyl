@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import sys
+import os
 import math
 import numpy as np
 import pandas as pd
@@ -9,6 +10,7 @@ import scipy.cluster.hierarchy as hierarchy
 from PIL import Image, ImageDraw, ImageFont
 from Bio.Blast import NCBIXML
 from Bio.Blast.Applications import NcbiblastpCommandline
+from Bio import Entrez, SeqIO
 from multiprocessing import cpu_count
 
 
@@ -585,3 +587,200 @@ def similarity_matrix(names):
 				res[-1].append(0)
 
 	return res
+
+
+def get_entries_from_blast_result(filename, cutoff=1e-30, TF=None):
+	'''
+	Extract best hits from a Blast result
+
+	:param filename: Filename of a Blast xml2 output (outfmt 16) to parse
+	:param cutoff: e-value cutoff of hits to include
+	:param TF: TaxFinder instance. Optional, but necessary to unify subspecies results
+	:returns: Dict where taxids point to tuples with accession, e-value, scientific species name, start of the hit, end of the hit; entries[taxid] = (acc, evalue, sciname, hitfrom, hitto)
+	'''
+
+	entries = {}
+
+	acc = None
+	taxid = None
+	sciname = None
+	evalue = None
+	hitfrom = None
+	hitto = None
+
+	with open(filename) as xml:
+		for line in xml:
+			if '<accession>' in line:
+				acc = line.strip().replace('<accession>', '').replace('</accession>', '')
+
+			elif not acc:
+				continue
+
+			elif '<taxid>' in line:
+				taxid = int(line.strip().replace('<taxid>', '').replace('</taxid>', ''))
+
+				try:
+					taxid = TF.getSpeciesFromSubspecies(taxid)
+				except ValueError:
+					print('Taxid {} not found!'.format(taxid), file=sys.stderr)
+				except AttributeError:
+					pass
+
+
+			elif '<sciname>' in line:
+				sciname = line.strip().replace('<sciname>', '').replace('</sciname>', '')
+
+			elif '<evalue>' in line:
+				evalue = float(line.strip().replace('<evalue>', '').replace('</evalue>', ''))
+
+			elif '<hit-from>' in line:
+				hitfrom = int(line.strip().replace('<hit-from>', '').replace('</hit-from>', ''))
+
+			elif '<hit-to>' in line:
+				hitto = int(line.strip().replace('<hit-to>', '').replace('</hit-to>', ''))
+
+				if hitto < hitfrom:
+					hitto, hitfrom = hitfrom, hitto
+
+				if evalue < cutoff and (taxid not in entries or entries[taxid][1] > evalue):
+					entries[taxid] = (acc, evalue, sciname, hitfrom, hitto)
+
+				acc = None
+				taxid = None
+				sciname = None
+				evalue = None
+				hitfrom = None
+				hitto = None
+
+	return entries
+
+
+def download_nucleotide_sequences(entries, mail, title=0, strip=False, logfile=None):
+	'''
+	Download nucleotide sequences from NCBI given a list of accessions.
+
+	:param entries: List of strings that are accessions of the nucleotides to download
+	:param mail: Your email address. Used by the NCBI in case something goes wrong
+	:param title: (int) If greater than 0, shorten the title to this length
+	:param strip: If True, trailing stop codons are stripped off from the sequenced
+	:param logfile: Open file pointer stating where to write the log output. Can also be sys.stderr. If None, the logs will be discarded
+	:returns: A string in fasta format ready to be written to disk
+	'''
+
+	if logfile is None:
+		logfile = open(os.devnull, 'w')
+
+	Entrez.email = mail
+	out = []
+	total = len(entries)
+	cdss = {}
+
+	for current, taxid in enumerate(entries, start=1):
+		print('\r' + ' '*75, end='\r', flush=True, file=logfile)
+
+		print('Running seq {:3d} of {:3d}: {:<15}'.format(current, total, entries[taxid][0]), end='', flush=True, file=logfile)
+
+		print('dl:', end='', flush=True, file=logfile)
+		try:
+			handle = Entrez.efetch(db='nuccore', id=entries[taxid][0], rettype='gb', retmode='text')
+		except Exception as err:
+			print('\r{}: {}'.format(entries[taxid][0], err), file=logfile)
+			continue
+
+		print('ok parse:', end='', flush=True, file=logfile)
+		seqobj = SeqIO.parse(handle, 'gb')
+		record = next(seqobj)
+		sequence = record._seq
+
+		featurecds = None
+
+		for feature in record.features:
+			if feature.type == 'CDS':
+				try:
+					name = feature.qualifiers['product'][0]
+					start = int(feature.location._start)
+					end = int(feature.location._end)
+				except (AttributeError, KeyError):
+					continue
+
+				if (not entries[taxid][3] and not entries[taxid][4]) or (start <= entries[taxid][3] and end >= entries[taxid][4]):
+					featurecds = (name, start, end)
+					break
+		else:
+			print('\r{}: No CDS{}'.format(entries[taxid][0], ' '*40), file=logfile)
+			continue
+
+		cds = str(sequence[start:end])
+
+		if not cds[:3] == 'ATG' or not cds[-3:] in ['TAA', 'TGA', 'TAG']:
+			if cds[-3:] == 'CAT' and cds[:3] in ['CTA', 'TCA', 'TTA']:
+				cds = str(sequence[start:end].reverse_complement())
+			else:
+				print('\r{}: No ATG or Stop codon found! Sequence will be omitted{}'.format(entries[taxid][0], ' '*30), file=logfile)
+				continue
+
+		if len(cds) % 3:
+			print('\r{}: Possible frameshit! Sequence will be omitted{}'.format(entries[taxid][0], ' '*40), file=logfile)
+			continue
+
+		if re.search(r'[^ACGT]', cds):
+			print('\r{}: Non canonical DNA base! Sequence will be included in output.{}'.format(entries[taxid][0], ' '*40), file=logfile)
+
+		if strip and cds[-3:] in ['TAA', 'TGA', 'TAG']:
+			cds = cds[:-3]
+
+		fasta_head = '>{}_{}'.format(entries[taxid][0], entries[taxid][2].replace(' ', '-'))
+		if title:
+			fasta_head = fasta_head[:title]
+
+		out.append('{}\n{}'.format(fasta_head, cds))
+
+	print('', file=logfile)
+
+	return '\n'.join(out)
+
+
+def download_protein_sequences(entries, mail, title=0, logfile=None):
+	'''
+	Download protein sequences from NCBI given a list of accessions.
+
+	:param entries: List of strings that are accessions of the proteins to download
+	:param mail: Your email address. Used by the NCBI in case something goes wrong
+	:param title: (int) If greater than 0, shorten the title to this length
+	:param logfile: Open file pointer stating where to write the log output. Can also be sys.stderr. If None, the logs will be discarded
+	:returns: A string in fasta format ready to be written to disk
+	'''
+
+	if logfile is None:
+		logfile = open(os.devnull, 'w')
+
+	Entrez.email = mail
+	out = []
+	total = len(entries)
+
+	for current, taxid in enumerate(entries, start=1):
+		print('\r' + ' '*75, end='\r', flush=True, file=logfile)
+
+		print('Running seq {:3d} of {:3d}: {:<15}'.format(current, total, entries[taxid][0]), end='', flush=True, file=logfile)
+
+		print('dl:', end='', flush=True, file=logfile)
+		try:
+			handle = Entrez.efetch(db='protein', id=entries[taxid][0], rettype='fasta', retmode='text')
+		except Exception as err:
+			print('\r{}: {}'.format(entries[taxid][0], err), file=logfile)
+			continue
+
+		fasta = str(SeqIO.read(handle, 'fasta')._seq)
+		handle.close()
+
+		print('ok parse:', end='', flush=True, file=logfile)
+
+		fasta_head = '>{}_{}'.format(entries[taxid][0], entries[taxid][2].replace(' ', '-'))
+		if title:
+			fasta_head = fasta_head[:title]
+
+		out.append('{}\n{}'.format(fasta_head, fasta))
+
+	print('', file=logfile)
+
+	return '\n'.join(out)

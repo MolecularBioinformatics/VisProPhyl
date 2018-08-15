@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 from taxfinder import TaxFinder
 from collections import defaultdict
 
-from phylogenetics import phylogenetics as phylo
+import phylogenetics as phylo
 
 
 class ConfigReader():
