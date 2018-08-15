@@ -14,7 +14,11 @@ class TaxFinder():
 			self.numLines = int(f.read().rstrip())
 
 		try:
-			self.taxdb = pickle.load(open(self._getFN('taxinfo.p'), 'rb'))
+			# test if the pickled file is newer
+			if os.path.getmtime('taxinfo.p') > os.path.getmtime('taxinfo'):
+				self.taxdb = pickle.load(open(self._getFN('taxinfo.p'), 'rb'))
+			else:
+				raise IOError
 		except IOError:
 			self.taxdb = {}
 			with open(self._getFN('taxinfo'), 'r') as namefile:
