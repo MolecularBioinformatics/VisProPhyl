@@ -1,5 +1,14 @@
 #!/usr/bin/env bash
 
+if [ ! -d "$TFPATH" ]
+then
+	echo 'TFPATH is not set or does not point to an existing path.' >&2
+	echo 'Please see the readme to see what this means.' >&2
+	exit 1
+fi
+
+cd ${TFPATH}
+
 echo "Downloading accession to taxid file..."
 curl -R --retry 1 -o prot.accession2taxid.gz ftp://ftp.ncbi.nih.gov/pub/taxonomy/accession2taxid/prot.accession2taxid.gz
 

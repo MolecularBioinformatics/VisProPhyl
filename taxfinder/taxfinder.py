@@ -9,8 +9,10 @@ class TaxFinder():
 
 	def __init__(self):
 
+		self.path = self.test_database()
+
 		self.acc2taxid = open(self._getFN('acc2taxid'), 'rb')
-		with open(self._getFN('numLines'), 'r') as f:
+		with open(self._getFN('numLines')) as f:
 			self.numLines = int(f.read().rstrip())
 
 		try:
@@ -21,7 +23,7 @@ class TaxFinder():
 				raise IOError
 		except IOError:
 			self.taxdb = {}
-			with open(self._getFN('taxinfo'), 'r') as namefile:
+			with open(self._getFN('taxinfo')) as namefile:
 				for line in namefile:
 					# TaxID, Level, Parent, Rank, Name
 					l = line.split('\t')
@@ -45,18 +47,35 @@ class TaxFinder():
 	def _getFN(self, fn):
 		''' Gets absolute path for a given file that is in the same directory as this script '''
 
-		return os.path.join(os.path.dirname(os.path.realpath(__file__)), fn)
+		return os.path.join(self.path, fn)
+
+
+	def get_database_path(self):
+		'''
+		Test if the path to the database is known and if the database exists.
+		'''
+
+		try:
+			path = os.environ["TFPATH"]
+		except KeyError:
+			print('TF: The environmental variable TFPATH could not be found.', file=sys.stderr)
+			print('TF: Please consult the readme to see how the database is initialized', file=sys.stderr)
+			sys.exit()
+
+		for filename in ('acc2taxid', 'numLines', 'taxinfo'):
+			if not os.path.isfile(os.path.join(path, filename)):
+				print('TF: The database is not in TFPATH.', file=sys.stderr)
+				print('TF: Please consult the readme to see how the database is initialized', file=sys.stderr)
+				sys.exit()
+
+		return path
 
 
 	def getTaxID(self, acc):
 		''' Finds the NCBI taxonomy id given an accession id '''
 
-		# Accessions are always uppercase
-		acc = acc.upper()
-
-		# Only consider the accession without the version part
-		if '.' in acc:
-			acc = acc.split('.')[0]
+		# Accessions are always uppercase and we only consider the accession without the version part
+		acc = acc.split('.')[0].upper()
 
 		# If we already looked for the accesion, get it from the cache
 		if acc in self.taxidCache:
@@ -118,13 +137,6 @@ class TaxFinder():
 		Get all taxonomy information from a hit id and hit definition (may include several species)
 		:returns: [{'taxid': int, 'level': int, 'parent': int, 'rank': str, 'name': str, 'acc': str, 'protname': str}, ...]
 		'''
-
-		#if newHeader:
-		#	hit = hitid + '|' + hitdef
-		#	reResults = re.finditer('^[^\|]+\|[^\|]+\|([0-9]+)\|[^ ]+   [^ ]+   [^ ]+   ([^\[]+).*$', hit)	# Group 1 is gi number, group 2 is protein name
-		#else:
-		#	hit = hitid + hitdef
-		#	reResults = re.finditer('gi\|([0-9]+)\|[^\|]+\|[^\|]+\|([^\[]+)', hit)	# Group 1 is gi number, group 2 is protein name
 
 		hit = hitid + hitdef
 		reResults = re.findall(r'gi\|[0-9]+\|[^\|]+\|([^\|]+)\|([^>]+)', hit)
