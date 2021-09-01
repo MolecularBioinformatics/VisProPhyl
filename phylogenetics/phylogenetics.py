@@ -78,7 +78,7 @@ def run_blastp(query, outfilename, db, evalue = 1, maxthreads = cpu_count()):
 	:creates: `outfilename`
 	'''
 
-	stdout, stderr = NcbiblastpCommandline(query = query, db = db, evalue = evalue, outfmt = 5, out = outfilename, num_threads = maxthreads, max_target_seqs = 20000)
+	stdout, stderr = NcbiblastpCommandline(query = query, db = db, evalue = evalue, outfmt = 16, out = outfilename, num_threads = maxthreads, max_target_seqs = 20000)
 
 	if stdout:
 		print(stdout, file=sys.stderr)
@@ -90,7 +90,7 @@ def parse_blast_result(blast_XML, TF, top = 0, exclude=None, new_header=True):
 	'''
 	Parses Blast result XML files and writes the best or all results with less information in a tsv file.
 
-	:param blast_XML: The filename of the Blast output (must be Blast output type 5)
+	:param blast_XML: The filename of the Blast output (must be Blast output type 16)
 	:param TF: An instance of the TaxFinder class
 	:param top: Return only the best `top` hits. If `top` is 0, all hits are returned.
 	:param exclude: Set with taxids of species to exclude from the results
@@ -420,7 +420,7 @@ def show_blast_mapping(blast_result_file, query_length):
 	'''
 	Create an overview over where the Blast hits are mapped on the query protein.
 
-	:param blast_result_file: The filename of a blast result (output 5!)
+	:param blast_result_file: The filename of a blast result (output 16!)
 	:param query_length: Length of the query protein
 	:returns: Instance of PIL.Image with the image
 	'''
