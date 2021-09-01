@@ -90,18 +90,18 @@ def get_labels(data, fill=NUMBER):
 		 '111': '3'}
 	'''
 
-	N = len(data)
+	num = len(data)
 
-	sets_data = [set(data[i]) for i in range(N)]  # sets for separate groups
-	s_all = set(chain(*data))							 # union of all sets
+	sets_data = [set(data[i]) for i in range(num)]   # sets for separate groups
+	s_all = set(chain(*data))						 # union of all sets
 
-	# bin(3) --> '0b11', so bin(3)[2:] will remove "0b"
 	set_collections = {}
-	for n in range(1, 2**N):
-		key = bin(n)[2:].zfill(N)
+	formatter = '0{}b'.format(num)
+	for n in range(1, 2**num):
+		key = format(n, formatter)
 		value = s_all
-		sets_for_intersection = [sets_data[i] for i in range(N) if key[i] == '1']
-		sets_for_difference = [sets_data[i] for i in range(N) if key[i] == '0']
+		sets_for_intersection = [sets_data[i] for i in range(num) if key[i] == '1']
+		sets_for_difference = [sets_data[i] for i in range(num) if key[i] == '0']
 		for s in sets_for_intersection:
 			value = value & s
 		for s in sets_for_difference:
