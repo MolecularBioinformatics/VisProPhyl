@@ -13,34 +13,38 @@ import phylogenetics as phylo
 
 class ConfigReader():
 	'''
-	The ConfigReader reads the `limits.txt`, `proteinlist.txt`, `heatmap_config.txt`, and `crosshits.txt` and returns the contents in different formats upon request.
+	The ConfigReader reads the `limits.txt`, `proteinlist.txt`, and `heatmap_config.txt` and returns the contents in different formats upon request.
 	'''
 
-	def __init__(self):
+	def __init__(self, limits_file='limits.txt', protein_list_file='proteinlist.txt', heatmap_config_file='heatmap_config.txt'):
 		'''
 		Initiates the class.
+
+		:param limits_file: A string to be prepended before the name
+		:param protein_list_file: A string to be appended after the name
+		:param heatmap_config_file: A string to be appended after the name
 		'''
 
-		self.limits_dict = {'default': (1e-30, 50)}
+		self.limits_dict = {}
 		self.proteins = []
 		self.protein_files = []
 		self.taxa_to_show = []
 		self.hm_colors = {}
 		self.clustering_method = ''
-		self.crosshits_to_analyse = []
-		self.crosscrosshits = []
 
-		self._read_proteinlist()
-		self._read_limits()
-		self._read_heatmap_values()
+		self._read_proteinlist(protein_list_file)
+		self._read_limits(limits_file)
+		self._read_heatmap_values(heatmap_config_file)
 
 
-	def _read_limits(self):
+	def _read_limits(self, filename):
 		'''
-		Reads `limits.txt` and saves the content as dictionary to be used by the `get_limits()` method.
+		Reads `filename` and saves the content as dictionary to be used by the `get_limits()` method.
+
+		:param filename: The filename to read the limits from.
 		'''
 
-		with open('limits.txt') as f:
+		with open(filename) as f:
 			self.limits_dict = {'default': (1e-30, 50)}
 			for line in f:
 				line = line.split('#')[0].rstrip()
@@ -60,21 +64,22 @@ class ConfigReader():
 
 	def get_limits(self):
 		'''
-		Reads `limits.txt` and returns a dict in the format: {'protein': (evalue, length), ...} where evalue is the negative exponent of the evalue (int) and length is the length limit for the protein (int).
+		Reads a limits file and returns a dict in the format: {'protein': (evalue, length), ...} where evalue is the negative exponent of the evalue (int) and length is the length limit for the protein (int).
 
-		:uses: `limits.txt`
 		:returns: A dictionary with limits as described above
 		'''
 
 		return self.limits_dict
 
 
-	def _read_proteinlist(self):
+	def _read_proteinlist(self, filename):
 		'''
-		Reads `proteinlist.txt` and saves the content as lists to be used by the get* methods.
+		Reads a protein list file and saves the content as lists to be used by the get* methods.
+
+		:param filename: The filename to read the protein list from.
 		'''
 
-		with open('proteinlist.txt') as f:
+		with open(filename) as f:
 			self.proteins = []
 			self.protein_files = []
 			for line in f:
@@ -129,12 +134,12 @@ class ConfigReader():
 		return ret
 
 
-	def _read_heatmap_values(self):
+	def _read_heatmap_values(self, filename):
 		'''
-		Reads `heatmap_config.txt` and saves the content as lists and dicts to be used by the get* methods.
+		Reads heatmap config file and saves the content as lists and dicts to be used by the get* methods.
 		'''
 
-		with open('heatmap_config.txt') as f:
+		with open(filename) as f:
 			self.taxa_to_show = []
 			self.hm_colors = {}
 			self.clustering_method = ''
@@ -198,52 +203,10 @@ class ConfigReader():
 
 		return self.clustering_method
 
-
-	def _read_crosshits(self):
-		'''
-		Reads `crosshits.txt` and saves the content as list(s) to be used by the get* methods.
-		'''
-
-		with open('crosshits.txt') as f:
-			self.crosshits_to_analyse = []
-			for line in f:
-				line = line.split('#')[0].rstrip()
-				if not line:
-					continue
-
-				if line.startswith('!crosscrosshits'):
-					if line == '!crosscrosshits':
-						self.crosscrosshits = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 50]
-					else:
-						self.crosscrosshits = sorted([int(x) for x in line.split()[1:]])
-					continue
-
-				self.crosshits_to_analyse.append(line)
-
-
-	def get_crosshits_to_analyse(self):
-		'''
-		Returns a list with the protein names to use for the crosshit analysis.
-
-		:returns: A list of protein names
-		'''
-
-		return self.crosshits_to_analyse
-
-
-	def get_crosscrosshits(self):
-		'''
-		Returns a list with the clustering borders (ints) for crosscrosshits.
-
-		:returns: A list of clustering borders (ints)
-		'''
-
-		return self.crosscrosshits
-
 	# end ConfigReader
 
 
-def _my_get_basename(name):
+def _get_basename(name):
 	'''
 	Strips the path and the extension from a filename. E.g. /a/path/to/file.png -> file
 
@@ -271,9 +234,7 @@ def init():
 	'''
 
 	os.makedirs('fastas', exist_ok=True)
-	os.makedirs('blastresults', exist_ok=True) # In case the user runs Blast separately
-
-	#orig_dir = os.path.dirname(os.path.realpath(__file__))
+	os.makedirs('blastresults', exist_ok=True)
 
 	if not os.path.isfile('.gitignore'):
 		with open('.gitignore', 'wb') as out:
@@ -326,33 +287,33 @@ def run_blast(db):
 
 	for i, filename in enumerate(file_list):
 		print(outstring.format(i+1, len(file_list), filename))
-		outfilename = 'blastresults/{}.xml'.format(_my_get_basename(filename))
+		outfilename = 'blastresults/{}.xml'.format(_get_basename(filename))
 		phylo.run_blastp(filename, outfilename, db)
 
 
-def parse_blast_results(to_parse = None):
+def parse_blast_results(to_parse = None, to_exclude=None):
 	'''
 	Parses Blast results to a table (tsv file).
 
 	:param to_parse: Should be an iterable with filenames that shall be parsed. If all files in `blastresults` shall be parsed, this must be None.
+	:param to_exclude: Set of taxonomy ids to exclude from the results. Leave empty (or set to None) to not exclude any species.
 	:creates: `resulttables/*.tsv`
 	'''
 
 	if to_parse is None:
 		to_parse = CR.get_protein_files(prefix = 'blastresults/', suffix = '.xml')
 
+	if to_exclude is None:
+		to_exclude = set()
+
 	os.makedirs('resulttables', exist_ok=True)
 
 	outstring = 'Now parsing {:' + str(len(str(len(to_parse)))) + 'd}/{}: {:<30}'
 
 	for i, filename in enumerate(to_parse):
-		basename = _my_get_basename(filename)
+		basename = _get_basename(filename)
 		print(outstring.format(i+1, len(to_parse), basename), end='\r')
-		parsed_result = phylo.parse_blast_result(filename, TF = TF, top = 0, exclude={118797, 59538, 7213})
-		# Contaminants:
-		#    118797: Lipotes vexillifer
-		#     59538: Pantholops hodgsonii
-		#      7213: Ceratitis capitata
+		parsed_result = phylo.parse_blast_result(filename, TF = TF, top = 0, exclude=to_exclude)
 
 		open('resulttables/{}.tsv'.format(basename), 'w').write(parsed_result)
 
@@ -457,7 +418,7 @@ def make_newick():
 	sanitizer = phylo.NodeSanitizer()
 
 	for filename in todo:
-		outfn = 'trees/{}.tre'.format(_my_get_basename(filename))
+		outfn = 'trees/{}.tre'.format(_get_basename(filename))
 		newick = phylo.make_newick(filename, sanitizer, TF)
 
 		open(outfn, 'w').write(newick)
@@ -607,168 +568,6 @@ def int_heatmap():
 	open('out.html', 'w').write(html)
 
 
-### not moved to the module, yet.
-def get_crosshits(to_analyse = None, crosscrosshits = None):
-	'''
-	For each pair of proteins creates a file '{protein1}-{protein2}-crosshits.tsv'
-	File has three columns: e-value, number of crosshits, AccID^TaxID for all crosshits (comma-separated)
-
-	:param to_analyse: Should be a list with proteinnames that shall be used. If it evaluates to False, proteins in `crosshits.txt` will be used instead.
-	:param crosscrosshits: A list with clustering borders for crosscrosshits. If not given, it will be tried to be read from `crosshits.txt`. To disable crosscrosshitting, omit or give None.
-	:creates: `crosshits/*.tsv`
-	'''
-
-	if to_analyse is None:
-		to_analyse = CR.get_crosshits_to_analyse()
-
-	if crosscrosshits is None:
-		crosscrosshits = CR.get_crosscrosshits()
-
-	if not to_analyse:
-		return
-
-	os.makedirs('crosshits', exist_ok=True)
-
-	values = {}
-
-	if crosscrosshits:
-		# set is important! the combined tables don't have unique entries
-		taxids = defaultdict(set)
-
-	for name in to_analyse:
-		values[name] = [set() for _ in range(151)]
-		with open('combinedtables/{}.tsv'.format(name)) as f:
-			next(f)
-			for line in f:
-				lline = line.split('\t')
-				evalue = lline[4]
-				if 'e-' in evalue:
-					evalue = int(evalue.split('e-')[1])
-					if evalue > 150:
-						evalue = 150
-				elif evalue == '0.0':
-					evalue = 150
-				else:
-					evalue = 0
-				acc = lline[1]
-				taxid = lline[0]
-				# Adding TaxID for later use, Acc-IDs are already unique (and implicate tax-id) so this should change anything
-				values[name][evalue].add(acc+'^'+taxid)
-				if crosscrosshits:
-					taxids[taxid].add(acc)
-
-	names = sorted(values)
-
-	for i, name1 in enumerate(names):
-		for name2 in names[i:]: # skips symmetric combinations
-			if name1 == name2:  # don't need to compare with itself
-				continue
-			acc1 = set()
-			acc2 = set()
-			common = [set() for _ in range(151)]
-			oldhits = set()
-			for evalue in range(150, -1, -1):
-				acc1.update(values[name1][evalue])
-				acc2.update(values[name2][evalue])
-				inter = acc1.intersection(acc2)
-				common[evalue] = inter - oldhits # only write those hits that are new for this evalue
-				oldhits.update(inter)
-
-			with open('crosshits/{}-{}.tsv'.format(name1, name2), 'w') as out:
-				out.write('#e-value\tnumber-of-crosshits\tAccID^TaxID comma-sep\n')
-				for j, line in enumerate(common):
-					out.write('{}\t{}\t{}\n'.format(j, len(line), ','.join(list(line))))
-
-			if crosscrosshits:
-				last = []
-				cchits = defaultdict(list)
-				for entry in oldhits:
-					tax = entry.split('^')[1]
-					for n in crosscrosshits:
-						if len(taxids[tax]) <= n:
-							cchits[n].append(tax)
-							break
-					else:
-						last = [crosscrosshits[-1]+1]
-						cchits[crosscrosshits[-1]+1].append(tax)
-
-				with open('crosshits/{}-{}-crosscrosshits.csv'.format(name1, name2), 'w') as out:
-					out.write('#This file contains clusters of crosscrosshits\n')
-					for n in crosscrosshits + last:
-						if n in last:
-							out.write('!>{} crosshits per species\n'.format(n-1))
-						elif n-1 and n-1 not in crosscrosshits:
-							if crosscrosshits.index(n):
-								lower = crosscrosshits[crosscrosshits.index(n) - 1] + 1
-							else:
-								lower = 1
-							out.write('!{} - {} crosshits per species\n'.format(lower, n))
-						else:
-							out.write('!{} crosshits per species\n'.format(n))
-
-						out.write(','.join(cchits[n])+'\n')
-
-
-### not moved to the module, yet.
-def cross_histograms():
-	'''
-	### NOT DESCRIPTION YET!!!
-	'''
-
-	try:
-		combos = [f[:-4] for f in os.listdir('crosshits') if f.endswith('.tsv')]
-	except IOError:
-		return
-	data = {}
-
-	for c in combos:
-		with open('crosshits/{}.tsv'.format(c)) as f:
-			next(f)
-			lowest = 0
-			d = np.array([range(151), [0]*151], dtype=np.int)
-			for line in f:
-				ev, num, accs = line.rstrip('\n').split('\t')
-				if not lowest and int(num):
-					lowest = int(ev)
-				d[1][int(ev)] = int(num)
-			try:
-				highest = max([ev for ev, n in enumerate(d[1]) if n]) # highest ev with non-0 crosshits
-			except ValueError:
-				highest = 0
-			data[c] = (lowest, highest, d)
-
-	for combo in combos:
-		print('Histogram: {:<50}'.format(combo), end='\r')
-		values = data[combo][2]
-
-		mi = data[combo][0] #(0) 30 or higher
-		ma = data[combo][1] #max 150
-		if len(values[1][mi:ma]) > 0:
-			mean = int(np.mean(values[1][mi:ma]))
-			median = int(np.median(values[1][mi:ma]))
-		else:
-			mean = '-'
-			median = '-'
-
-		text = '''Distribution
-    min: {}
-    max: {}
-    average: {}
-    median: {}'''.format(mi, ma, mean, median)
-
-		fig = plt.figure(1, figsize=(12, 6))
-		ax = fig.add_subplot(1, 1, 1)
-		bars = ax.bar(values[0], values[1], width=1)
-
-		ax.text(0.05, 0.95, text, transform=ax.transAxes, horizontalalignment='left', verticalalignment='top')
-		ax.set_xlabel('E-value [10^-X]')
-		ax.set_ylabel('Number of crosshits')
-
-		fig.savefig('crosshits/{}-distribution.png'.format(combo))
-
-		fig.clear()
-
-
 tasknames = ['blast', 'parse', 'combine', 'comheat', 'unique', 'newick', 'attrib', 'hist', 'map', 'intheat', 'matrix', 'crosshits', 'crosshist']
 
 tasks = {'blast': ('run Blast', run_blast),
@@ -815,6 +614,9 @@ if __name__ == '__main__':
 	import argparse
 	import textwrap
 
+	def to_set(s):
+		return set(s.split(','))
+
 	workflow = '\n'.join(textwrap.wrap('''The following is a list of the workflow. The names or numbers can be used for the -s or -o arguments.''', width = 80))
 
 	workflow += '\n\n' + '\n'.join(('{:>2}. {:<8} {}'.format(i, name, tasks[name][0]) for i, name in enumerate(tasknames)))
@@ -827,7 +629,8 @@ if __name__ == '__main__':
 	parser.add_argument('-b', '--blast', action='store_true', help='Run the full workflow including Blast')
 	parser.add_argument('-s', '--startfrom', default='', help='Run from and including this step [e.g. 7 or hist]')
 	parser.add_argument('-o', '--only', default='', help='Run only the given step [e.g. 4 or unique]')
-	parser.add_argument('-d', '--database', default='', help='Path to the Blast database to use. Only needed when actually running Blast (-b or -[os] blast)')
+	parser.add_argument('-d', '--database', default='', help='Path to the Blast database to use. Only needed when actually running Blast (-b or -[o|s] blast)')
+	parser.add_argument('-e', '--exclude', type=to_set, default={118797, 59538, 7213}, help='Comma-separated list of taxonomy ids to exclude. By default the species Lipotes vexillifer (118797), Pantholops hodgsonii (59538), and Ceratitis capitata (7213) are excluded due to known massive contamination of bacterial sequences in the genome.')
 
 	args = parser.parse_args()
 
