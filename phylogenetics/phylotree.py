@@ -9,7 +9,7 @@ from matplotlib import cm as mpl_colormap
 from datetime import datetime
 
 
-class TreeMaker(object):
+class TreeMaker():
 
 	def __init__(self, tree, treefile, prune, sqrt = False, collapse = True, show_empty_species = True, startnode = None, countTotal = False):
 

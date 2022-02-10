@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+# This code was derived from https://github.com/tctianchi/pyvenn
+
 from itertools import chain
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
@@ -53,7 +55,7 @@ def _draw_triangle(ax, x1, y1, x2, y2, x3, y3, fillcolor):
 	ax.add_patch(polygon)
 
 
-def _draw_text(ax, x, y, text, color=[0, 0, 0, 1]):
+def _draw_text(ax, x, y, text, color=(0, 0, 0, 1)):
 	'''
 	Draw a text on axis ax at position x, y and a given color
 	'''
@@ -90,40 +92,40 @@ def get_labels(data, fill=NUMBER):
 		 '111': '3'}
 	'''
 
-	num = len(data)
+	num_data = len(data)
 
-	sets_data = [set(data[i]) for i in range(num)]   # sets for separate groups
+	sets_data = [set(data[i]) for i in range(num_data)]   # sets for separate groups
 	s_all = set(chain(*data))						 # union of all sets
 
 	set_collections = {}
-	formatter = '0{}b'.format(num)
-	for n in range(1, 2**num):
+	formatter = '0{}b'.format(num_data)
+	for n in range(1, 2**num_data):
 		key = format(n, formatter)
 		value = s_all
-		sets_for_intersection = [sets_data[i] for i in range(num) if key[i] == '1']
-		sets_for_difference = [sets_data[i] for i in range(num) if key[i] == '0']
-		for s in sets_for_intersection:
-			value = value & s
-		for s in sets_for_difference:
-			value = value - s
+		sets_for_intersection = [sets_data[i] for i in range(num_data) if key[i] == '1']
+		sets_for_difference = [sets_data[i] for i in range(num_data) if key[i] == '0']
+		for current_set in sets_for_intersection:
+			value = value & current_set
+		for current_set in sets_for_difference:
+			value = value - current_set
 		set_collections[key] = value
 
-	labels = {k: '' for k in set_collections}
+	labels = {key: '' for key in set_collections}
 	if fill & LOGIC:
-		for k in set_collections:
-			labels[k] = k + ': '
+		for key in set_collections:
+			labels[key] = key + ': '
 	if fill & NUMBER:
-		for k in set_collections:
-			labels[k] += str(len(set_collections[k]))
+		for key in set_collections:
+			labels[key] += str(len(set_collections[key]))
 	if fill & PERCENT:
 		data_size = len(s_all)
-		for k in set_collections:
-			labels[k] += '({:.1f}%)'.format(100 * len(set_collections[k]) / data_size)
+		for key in set_collections:
+			labels[key] += '({:.1f}%)'.format(100 * len(set_collections[key]) / data_size)
 
 	return labels
 
 
-def _venn2(labels, names=['A', 'B'], colors=None, figsize=(9, 7), dpi=96):
+def _venn2(labels, names=('A', 'B'), colors=None, figsize=(9, 7), dpi=96):
 	'''
 	Plot a 2-set Venn diagram
 
@@ -163,7 +165,7 @@ def _venn2(labels, names=['A', 'B'], colors=None, figsize=(9, 7), dpi=96):
 	return fig, ax
 
 
-def _venn3(labels, names=['A', 'B', 'C'], colors=None, figsize=(9, 9), dpi=96):
+def _venn3(labels, names=('A', 'B', 'C'), colors=None, figsize=(9, 9), dpi=96):
 	'''
 	Plot a 3-set Venn diagram
 
@@ -209,7 +211,7 @@ def _venn3(labels, names=['A', 'B', 'C'], colors=None, figsize=(9, 9), dpi=96):
 	return fig, ax
 
 
-def _venn4(labels, names=['A', 'B', 'C', 'D'], colors=None, figsize=(12, 12), dpi=96):
+def _venn4(labels, names=('A', 'B', 'C', 'D'), colors=None, figsize=(12, 12), dpi=96):
 	'''
 	Plot a 4-set Venn diagram
 
@@ -265,7 +267,7 @@ def _venn4(labels, names=['A', 'B', 'C', 'D'], colors=None, figsize=(12, 12), dp
 	return fig, ax
 
 
-def _venn5(labels, names=['A', 'B', 'C', 'D', 'E'], colors=None, figsize=(13, 13), dpi=96):
+def _venn5(labels, names=('A', 'B', 'C', 'D', 'E'), colors=None, figsize=(13, 13), dpi=96):
 	'''
 	Plot a 5-set Venn diagram
 
@@ -339,7 +341,7 @@ def _venn5(labels, names=['A', 'B', 'C', 'D', 'E'], colors=None, figsize=(13, 13
 	return fig, ax
 
 
-def _venn6(labels, names=['A', 'B', 'C', 'D', 'E'], colors=None, figsize=(20, 20), dpi=96):
+def _venn6(labels, names=('A', 'B', 'C', 'D', 'E'), colors=None, figsize=(20, 20), dpi=96):
 	'''
 	Plot a 6-set Venn diagram
 
@@ -477,7 +479,7 @@ def venn(groups, names=None, fill=NUMBER, savename=None, show=False, **options):
 	names = sorted(groups.keys())
 	name_ids = {2**i: n for i, n in enumerate(names)}
 
-	to_plot = get_labels([groups[n] for n in names], fill=fill)
+	to_plot = get_labels([groups[name] for name in names], fill=fill)
 
 	plt.close('all') # Reset any possible earlier figures
 	fig, ax = venns[len(groups)](to_plot, names, **options)

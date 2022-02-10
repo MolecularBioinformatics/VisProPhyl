@@ -66,7 +66,7 @@ class NodeSanitizer():
 				print(elem)
 
 
-def run_blastp(query, outfilename, db, evalue = 1, maxthreads = cpu_count()):
+def run_blastp(query, outfilename, db, evalue = 1, maxthreads = cpu_count(), remote=True):
 	'''
 	Run Blastp. This may take a long time (several minutes up to half-an-hour depending on the computer power and the size of the query and the database.
 
@@ -75,6 +75,7 @@ def run_blastp(query, outfilename, db, evalue = 1, maxthreads = cpu_count()):
 	:param db: The database file
 	:param evalue: The e-value cut-off (should usually be very high, as the results will be filtered out afterwards)
 	:param maxthreads: The maximum number of threads to use by Blast
+	:param remote: If True, use remote Blast on the NCBI servers. Use local Blast otherwise.
 	:creates: `outfilename`
 	'''
 
@@ -437,19 +438,19 @@ def show_blast_mapping(blast_result_file, query_length):
 			for alignment in record.alignments:
 				for hsp in alignment.hsps:
 					if hsp.expect > 1e-15:
-						n = 0
+						num = 0
 					elif hsp.expect > 1e-30:
-						n = 1
+						num = 1
 					elif hsp.expect > 1e-60:
-						n = 2
+						num = 2
 					elif hsp.expect > 1e-90:
-						n = 3
+						num = 3
 					elif hsp.expect > 1e-120:
-						n = 4
+						num = 4
 					else:
-						n = 5
-					counters[n][hsp.query_start - 1:hsp.query_end - 1] += 1
-					num_hsps[n] += 1
+						num = 5
+					counters[num][hsp.query_start - 1:hsp.query_end - 1] += 1
+					num_hsps[num] += 1
 
 	ma = [np.amax(counters[n]) * 0.01 for n in range(6)]
 
