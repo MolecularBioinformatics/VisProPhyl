@@ -45,7 +45,7 @@ def get_node_from_taxid(loi, taxid, TF):
 	if taxid in nodedict:
 		return nodedict[taxid]
 
-	lineage = TF.getLineageFast(taxid)
+	lineage = TF.get_lineage_fast(taxid)
 
 	if lineage == loi:
 		node = loi[-1]
@@ -183,8 +183,8 @@ def get_simvalues(loi, blastXMLlist, ref_hits, TF):
 
 
 def get_loi(target1, target2):
-	lineage1 = TF.getLineageFast(int(target1))
-	lineage2 = TF.getLineageFast(int(target2))
+	lineage1 = TF.get_lineage_fast(int(target1))
+	lineage2 = TF.get_lineage_fast(int(target2))
 
 	raise NotImplementedError
 
@@ -202,7 +202,7 @@ if __name__ == '__main__':
 		if len(loi) == 2:
 			lineage_of_interest = get_loi(*loi)
 		else:
-			lineage_of_interest = list(TF.getLineageFast(int(loi[0])))
+			lineage_of_interest = list(TF.get_lineage_fast(int(loi[0])))
 
 		for line in f:
 			line = line.rstrip()
@@ -261,8 +261,8 @@ if __name__ == '__main__':
 		if to_delete[taxid]:
 			lineage_of_interest.remove(taxid)
 
-	# Can't use the simple getLineage, because some parts were probably deleted a few lines up
-	lineage_names = [TF.getNameFromID(taxid) for taxid in lineage_of_interest]
+	# Can't use the simple get_lineage, because some parts were probably deleted a few lines up
+	lineage_names = [TF.get_name_from_id(taxid) for taxid in lineage_of_interest]
 
 	img_width = 16
 	img_height = 8*len(panels)
