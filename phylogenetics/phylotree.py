@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import argparse
 import sys
 import math
 from ete3 import Tree, TreeStyle, NodeStyle, faces, PieChartFace, TextFace, CircleFace
@@ -1001,8 +1002,7 @@ class Clusters(TreeMaker):
 # end Clusters class
 
 
-if __name__ == '__main__':
-	import argparse
+def main():
 
 	parser = argparse.ArgumentParser(description='Create a tree with piecharts. Different modes are supported: *combination* of proteins, *crosshit* e-value distribution, Protein *cluster* distributons.')
 

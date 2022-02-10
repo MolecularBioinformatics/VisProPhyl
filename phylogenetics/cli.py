@@ -7,8 +7,15 @@ import numpy as np
 import matplotlib.pyplot as plt
 from taxfinder import TaxFinder
 from collections import defaultdict
+import argparse
+import textwrap
 
 import phylogenetics as phylo
+
+
+TF = None
+CR = None
+blastdb = ''
 
 
 class ConfigReader():
@@ -269,7 +276,7 @@ def init():
 			out.write(pkg_resources.resource_string('phylogenetics', 'templates/heatmap_template.html'))
 
 
-def run_blast(db):
+def run_blast():
 	'''
 	Blasts a list of files with Blastp against the provided database.
 
@@ -279,7 +286,7 @@ def run_blast(db):
 
 	os.makedirs('blastresults', exist_ok=True)
 
-	if not db:
+	if not blastdb:
 		raise ValueError('blastdb is empty. Run this script with -d /path/to/blastdb')
 
 	file_list = CR.get_protein_files(prefix = 'fastas/', suffix = '.fasta')
@@ -610,9 +617,9 @@ def run_workflow(start, end=''):
 		task()
 
 
-if __name__ == '__main__':
-	import argparse
-	import textwrap
+def main():
+
+	global TF, CR, blastdb
 
 	def to_set(s):
 		return set(s.split(','))
@@ -692,13 +699,3 @@ if __name__ == '__main__':
 	else:
 		print('This should not happen!')
 		parser.print_help()
-else:
-	# We need objects of these two classes for most of the functions, so we initialize them here already
-	# TaxFinder takes some seconds to load, so this is, what makes loading this module slow.
-	TF = TaxFinder()
-	try:
-		CR = ConfigReader()
-	except IOError:
-		CR = None
-
-	blastdb = ''
