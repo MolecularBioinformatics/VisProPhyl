@@ -9,7 +9,7 @@ version = re.search(r'__version__\s*=\s*[\'"]([^\'"]*)[\'"]',
                     open('phylogenetics/__init__.py').read()).group(1)
 
 setuptools.setup(
-    name='Phylogenetics (Working Title!!)',
+    name='phylogenetics_working_title',
     version=version,
     author='Mathias Bockwoldt',
     author_email='mathias.bockwoldt@gmail.com',
@@ -17,8 +17,8 @@ setuptools.setup(
     long_description=long_description,
     long_description_content_type='text/markdown',
     url='https://github.com/MolecularBioinformatics/Phylogenetics',
-    packages=setuptools.find_packages(),,
-	package_data = {'phylogenetics': ['templates/*']}
+    packages=setuptools.find_packages(),
+	package_data = {'phylogenetics': ['templates/*']},
     entry_points={'console_scripts': [
                                     'phylogenetics = phylogenetics.cli:main',
                                     'phylotree = phylogenetics.phylotree:main',

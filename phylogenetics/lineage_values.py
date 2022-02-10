@@ -46,15 +46,15 @@ def get_values(loi, blastXMLlist, TF):
 			records = NCBIXML.parse(f)
 
 			for record in records:
-				for alignment in record.alignments:
-					infos = TF.getInfoFromHitDef(alignment.hit_id, alignment.hit_def, newHeader = True)
+				for i, descr in enumerate(record.descriptions):
+					for hit in descr.items:
+						taxid = hit.taxid
 
-					for info in infos:
-						node = get_node_from_taxid(loi, info['taxid'], TF)
+						node = get_node_from_taxid(loi, taxid, TF)
 						if node is None:
 							continue
 
-						for hsp in alignment.hsps:
+						for hsp in record.alignments[i].hsps:
 							try:
 								elog = -1 * math.log10(hsp.expect)
 							except ValueError:

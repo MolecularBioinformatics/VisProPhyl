@@ -10,8 +10,8 @@ Installation dependencies are given separately with every script.
 The scripts were originally written by Mathias Bockwoldt.
 
 ```sh
-pip install -r requirements.txt
-pip install .
+pip install wheel  # The package ete3 needs wheel to be installed first...
+pip install -e .
 ```
 
 Todo

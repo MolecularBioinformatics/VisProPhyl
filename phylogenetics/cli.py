@@ -317,12 +317,17 @@ def parse_blast_results(to_parse = None, to_exclude=None):
 
 	outstring = 'Now parsing {:' + str(len(str(len(to_parse)))) + 'd}/{}: {:<30}'
 
+	header = '\t'.join(('Tax-ID', 'Acc', 'Species', 'Rank', 'e-value', 'Length', 'Lineage', 'Prot-Name', 'Query-Protein'))
+
 	for i, filename in enumerate(to_parse):
 		basename = _get_basename(filename)
 		print(outstring.format(i+1, len(to_parse), basename), end='\r')
 		parsed_result = phylo.parse_blast_result(filename, TF = TF, top = 0, exclude=to_exclude)
 
-		open('resulttables/{}.tsv'.format(basename), 'w').write(parsed_result)
+		with open('resulttables/{}.tsv'.format(basename), 'w') as out:
+			out.write(header)
+			out.write('\n')
+			out.write('\n'.join(parsed_result))
 
 
 def combine_parsed_results():
@@ -344,7 +349,6 @@ def combine_parsed_results():
 			max_evalue, min_length = limits[k]
 		except KeyError:
 			max_evalue, min_length = limits['default']
-		header = True
 
 		combined = phylo.combine_parsed_results(proteins[k], max_evalue, min_length)
 
@@ -575,21 +579,23 @@ def int_heatmap():
 	open('out.html', 'w').write(html)
 
 
-tasknames = ['blast', 'parse', 'combine', 'comheat', 'unique', 'newick', 'attrib', 'hist', 'map', 'intheat', 'matrix', 'crosshits', 'crosshist']
+tasks = {
+	'blast': ('run Blast', run_blast),
+	'parse': ('parse Blast results', parse_blast_results),
+	'combine': ('combine parsed results', combine_parsed_results),
+	'comheat': ('combine parsed results for heatmaps', tables_for_interactive_heatmap),
+	'unique': ('create unique lists of names and taxids', unique_names),
+	'newick': ('create Newick tree for each protein', make_newick),
+	'attrib': ('determine tree attributes', tree_attributes),
+	'hist': ('create histograms with Blast hits for each protein', make_histograms),
+	'map': ('create hit mapping diagrams for each protein', show_blast_mapping),
+	'intheat': ('create an interactive heatmap (html)', int_heatmap),
+	'matrix': ('create a similarity matrix of all proteins', similarity_matrix),
+#	'crosshits': ('create files with all blast crosshits of certain proteins', get_crosshits),
+#	'crosshist': ('creates Histograms of e-value distribution for crosshits', cross_histograms),
+}
 
-tasks = {'blast': ('run Blast', run_blast),
-'parse': ('parse Blast results', parse_blast_results),
-'combine': ('combine parsed results', combine_parsed_results),
-'comheat': ('combine parsed results for heatmaps', tables_for_interactive_heatmap),
-'unique': ('create unique lists of names and taxids', unique_names),
-'newick': ('create Newick tree for each protein', make_newick),
-'attrib': ('determine tree attributes', tree_attributes),
-'hist': ('create histograms with Blast hits for each protein', make_histograms),
-'map': ('create hit mapping diagrams for each protein', show_blast_mapping),
-'intheat': ('create an interactive heatmap (html)', int_heatmap),
-'matrix': ('create a similarity matrix of all proteins', similarity_matrix),
-'crosshits': ('create files with all blast crosshits of certain proteins', get_crosshits),
-'crosshist': ('creates Histograms of e-value distribution for crosshits', cross_histograms)}
+tasknames = list(tasks)
 
 
 def run_workflow(start, end=''):

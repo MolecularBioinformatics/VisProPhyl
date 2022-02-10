@@ -73,15 +73,15 @@ def get_evalues(loi, blastXMLlist, TF):
 			records = NCBIXML.parse(f)
 
 			for record in records:
-				for alignment in record.alignments:
-					infos = TF.getInfoFromHitDef(alignment.hit_id, alignment.hit_def, newHeader = True)
+				for i, descr in enumerate(record.descriptions):
+					for hit in descr.items:
+						taxid = hit.taxid
 
-					for info in infos:
-						node = get_node_from_taxid(loi, info['taxid'], TF)
+						node = get_node_from_taxid(loi, taxid, TF)
 						if node is None:
 							continue
 
-						for hsp in alignment.hsps:
+						for hsp in record.alignments[i].hsps:
 							try:
 								elog = -1 * math.log10(hsp.expect)
 							except ValueError:
@@ -89,9 +89,6 @@ def get_evalues(loi, blastXMLlist, TF):
 
 							if loidict[node] is None or elog > loidict[node]:
 								loidict[node] = elog
-							#loidict[node].append(elog)
-
-	#loidict = {x: sum(loidict[x])/len(loidict[x]) for x in loi if loi[x]}
 
 	return loidict
 
@@ -104,26 +101,24 @@ def get_best_hit_ids(loi, blastXMLlist, TF):
 			records = NCBIXML.parse(f)
 
 			for record in records:
-				for alignment in record.alignments:
-					infos = TF.getInfoFromHitDef(alignment.hit_id, alignment.hit_def, newHeader = True)
-
-					for info in infos:
-						node = get_node_from_taxid(loi, info['taxid'], TF)
+				for i, descr in enumerate(record.descriptions):
+					for hit in descr.items:
+						taxid = hit.taxid
+						acc = hit.accession
+						node = get_node_from_taxid(loi, taxid, TF)
 						if node is None:
 							continue
 
-						taxid = info['taxid']
-
-						for hsp in alignment.hsps:
+						for hsp in record.alignments[i].hsps:
 							try:
 								elog = -1 * math.log10(hsp.expect)
 							except ValueError:
 								elog = 200 # if e == 0.0
 
 							if taxid not in loidict[node]:
-								loidict[node][taxid] = [(elog, info['acc'])]
+								loidict[node][taxid] = [(elog, acc)]
 							elif elog > loidict[node][taxid][0][0]:
-								loidict[node][0] = (elog, info['acc'])
+								loidict[node][0] = (elog, acc)
 
 	return loidict
 

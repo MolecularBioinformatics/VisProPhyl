@@ -87,7 +87,7 @@ def run_blastp(query, outfilename, db, evalue = 1, maxthreads = cpu_count(), rem
 		print(stderr, file=sys.stderr)
 
 
-def parse_blast_result(blast_XML, TF, top = 0, exclude=None, new_header=True):
+def parse_blast_result(blast_XML, TF, top = 0, exclude=None):
 	'''
 	Parses Blast result XML files and writes the best or all results with less information in a tsv file.
 
@@ -95,12 +95,8 @@ def parse_blast_result(blast_XML, TF, top = 0, exclude=None, new_header=True):
 	:param TF: An instance of the TaxFinder class
 	:param top: Return only the best `top` hits. If `top` is 0, all hits are returned.
 	:param exclude: Set with taxids of species to exclude from the results
-	:param new_header: Were the Blast results produced with new headers (database from 2016 and newer)?
 	:returns: tsv table as string with the results
 	'''
-
-	if exclude is None:
-		exclude = set()
 
 	if top < 0:
 		top = 0
@@ -110,30 +106,43 @@ def parse_blast_result(blast_XML, TF, top = 0, exclude=None, new_header=True):
 	with open(blast_XML) as f:
 		records = NCBIXML.parse(f)
 
-		result.append('\t'.join(('Tax-ID', 'Acc', 'Species', 'Rank', 'e-value', 'Length', 'Lineage', 'Prot-Name', 'Query-Protein')))
-
 		for record in records:
-			for i, alignment in enumerate(record.alignments):
+
+			try:
+				query = record.query.split('|')[1]
+			except IndexError:
+				query = record.query
+
+			for i, descr in enumerate(record.descriptions):
 				if top and i > top:
 					break
 
-				infos = TF.getInfoFromHitDef(alignment.hit_id, alignment.hit_def, newHeader = new_header)
+				evalue = descr.e
 
-				for info in infos:
-					if info['taxid'] in exclude:
-						continue
+				alignment_length = record.alignments[i].hsps[0].align_length
 
-					lineage = ', '.join(TF.getLineage(info['taxid'], display = 'name'))
+				for hit in descr.items:
+					taxid = hit.taxid
+					lineage = TF.getLineage(taxid, display = 'taxid')
+					if exclude:
+						stop = False
+						for tid in exclude:
+							if tid in lineage:
+								stop = True
+								break
+						if stop:
+							continue
 
-					for hsp in alignment.hsps:
-						try:
-							line = '\t'.join((str(info['taxid']), info['acc'], info['name'], info['rank'], str(hsp.expect), str(hsp.align_length), lineage, info['protname'], record.query.split('|')[1]))
-						except IndexError:
-							line = '\t'.join((str(info['taxid']), info['acc'], info['name'], info['rank'], str(hsp.expect), str(hsp.align_length), lineage, info['protname'], record.query))
+					acc = hit.accession
+					taxinfo = TF.getTaxInfo(taxid)
+					species = taxinfo['name']
+					rank = taxinfo['rank']
+					lineage_str = '>'.join(TF.getLineage(taxid, display = 'name'))
+					protname = hit.title.split('[')[0].rstrip()
 
-						result.append(line)
+					result.append(f'{taxid}\t{acc}\t{species}\t{rank}\t{evalue}\t{alignment_length}\t{lineage_str}\t{protname}\t{query}')
 
-	return '\n'.join(result)
+	return result
 
 
 def combine_parsed_results(parsed_results, max_evalue, min_length):
@@ -489,13 +498,15 @@ def interactive_heatmap(matrix, tick_taxa, tick_proteins, colors, template, meth
 	:param matrix: List of lists with integers indication the -log(evalue) of a protein in a taxon. The first level (`matrix[x]`) should fit to `tick_proteins` and the second level (`matrix[…][x]`) should fit to `tick_taxa` and contain the -log(evalue) of that taxon to the protein.
 	:param tick_taxa: List of taxa as strings
 	:param tick_proteins: List of proteins as strings
-	:param colors: Dict with five elements, mapping letters 'grcbm' (green, red, cyan, blue, magenta) to HTML color codes.
+	:param colors: Dict with ten elements, mapping letters 'C0', 'C1', ... 'C9' to HTML color codes.
 	:param template: HTML template to use for the output.
 	:param method: Which clustering method to use (str). See scipy.cluster.hierarchy.linkage for options.
 	:returns: HTML as string
 	'''
 
 	pdmatrix = pd.DataFrame(matrix, columns = tick_taxa, index = tick_proteins)
+
+	hierarchy.set_link_color_palette(['m', 'c', 'y', 'k'])
 
 	linkage = hierarchy.linkage(pdmatrix, method=method)
 	dendro = hierarchy.dendrogram(linkage, labels = tick_proteins, no_plot = True, distance_sort = True)

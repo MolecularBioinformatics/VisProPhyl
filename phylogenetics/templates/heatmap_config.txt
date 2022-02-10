@@ -60,11 +60,16 @@ Chlorella_variabilis_(Plant)^554065
 Acanthamoeba_castellanii_(Amoeba)^5755
 
 COLORS
-g	#00cc00
-r	#cc0000
-c	#00cccc
-b	#0000cc
-m	#cc00cc
+C0	#00cc00
+C1	#cc0000
+C2	#00cccc
+C3	#0000cc
+C4	#cc00cc
+C5	#00cc00
+C6	#cc0000
+C7	#00cccc
+C8	#0000cc
+C9	#cc00cc
 
 ALGO
 centroid

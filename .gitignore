@@ -1,4 +1,3 @@
-wget-log
 __pycache__/
 no_sync/
-Phylogenetics.egg-info/
+*.egg-info/
