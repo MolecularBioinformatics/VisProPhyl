@@ -609,7 +609,7 @@ def int_heatmap():
 		matrix.append([-100] * len(taxa_to_check))
 		with open(f'interactivetables/{protein}.tsv') as tablefile:
 			for line in tablefile:
-				lline = line.split(, maxsplit=1)
+				lline = line.split(maxsplit=1)
 				if lline[0] in taxids:
 					matrix[i][taxids[lline[0]]] = int(lline[1])
 
