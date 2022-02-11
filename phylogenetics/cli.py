@@ -59,7 +59,7 @@ class ConfigReader():
 		with open(filename) as limit_file:
 			self.limits_dict = {'default': (1e-30, 50)}
 			for line in limit_file:
-				line = line.split('#')[0].rstrip()
+				line = line.split('#', maxsplit=1)[0].rstrip()
 				if not line:
 					continue
 				lline = line.split()
@@ -99,7 +99,7 @@ class ConfigReader():
 			self.proteins = []
 			self.protein_files = []
 			for line in protein_list_file:
-				line = line.split('#')[0].strip()
+				line = line.split('#', maxsplit=1)[0].strip()
 				if not line:
 					continue
 				elems = line.split()
@@ -178,8 +178,8 @@ class ConfigReader():
 			clustering_methods = {'single', 'complete', 'average', 'weighted', 'centroid', 'median', 'ward'}
 
 			for line in heatmap_file:
-				line = line.rstrip()
-				if not line or line.startswith('#'):
+				line = line.split('#', maxsplit=1)[0].strip()
+				if not line:
 					continue
 
 				if line in modes:
@@ -189,7 +189,7 @@ class ConfigReader():
 					self.taxa_to_show.append(line)
 
 				elif mode == 'colors':
-					lline = line.split()
+					lline = line.split(maxsplit=1)
 					self.hm_colors[lline[0]] = lline[1]
 
 				elif mode == 'clustering':
@@ -478,7 +478,6 @@ def tree_attributes():
 	string. The meaning of each string will be written to `attributekeys.txt`.
 
 	:uses: `trees/general.tre`
-	:creates: `attributekeys.txt` (containing an explanation of the keys)
 	:creates: `attributes.txt` (containing the keys for each protein)
 	'''
 
@@ -489,11 +488,12 @@ def tree_attributes():
 
 	keys, attributes = phylo.get_keys_and_attributes(proteinlist, filenames, master_tree)
 
-	with open('attributekeys.txt', 'w') as out:
-		for key in sorted(keys):
-			out.write(f'{key} -> {keys[key]}\n')
-
 	with open('attributes.txt', 'w') as out:
+		for key in sorted(keys):
+			out.write(f'{key} {keys[key]}\n')
+
+		out.write('---\n')
+
 		for k in sorted(attributes):
 			out.write('{}\t{}\n'.format(k, ''.join(attributes[k])))
 
@@ -598,7 +598,7 @@ def int_heatmap():
 	taxids = {}
 	tick_taxa = []
 	for i, tax in enumerate(taxa_to_check):
-		taxname, taxid = tax.split('^')
+		taxname, taxid = tax.split('^', maxsplit=1)
 		tick_taxa.append(taxname.replace('_', ' '))
 		taxids[taxid] = i
 
@@ -609,7 +609,7 @@ def int_heatmap():
 		matrix.append([-100] * len(taxa_to_check))
 		with open(f'interactivetables/{protein}.tsv') as tablefile:
 			for line in tablefile:
-				lline = line.split()
+				lline = line.split(, maxsplit=1)
 				if lline[0] in taxids:
 					matrix[i][taxids[lline[0]]] = int(lline[1])
 

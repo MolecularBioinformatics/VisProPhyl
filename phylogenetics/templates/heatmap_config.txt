@@ -1,24 +1,26 @@
 # This file contains information about the interactive heatmap.
 # Lines starting with a hash (#) and empty lines are ignored.
 #
-# After the keyword TAXA_TO_SHOW, you may give taxa that shall be included in
-# the heatmap. One taxon per line. The format is:
+# After the keyword TAXA_TO_SHOW, you may give taxa that shall be
+# included in the heatmap. One taxon per line. The format is:
 #    Name_as_shown_in_the_heatmap^TAXID
 # Where TAXID is the NCBI taxonomy id of the taxon.
 #
 # After the keyword COLORS, you may define colors. The scipy clustering
-# algorithms return colors for the tree lines depending on how closely related
-# the clusters are. Scipy returns the colors encoded in the letters g, r, c, b,
-# m for green, red, cyan, blue, magenta, respectively. You must define an actual
-# color for each letter in the format:
-#    x [TAB] #rrggbb
-# Where x is the letter and #rrggbb is the "html" color value.
+# algorithms return colors for the tree lines depending on how closely
+# related the clusters are. Scipy returns the colors encoded as C[0-9].
+# You must define each color in the format:
+#    Cx #rrggbb
+# Where x is the number (0-9) and #rrggbb is the hexadecimal ("html")
+# color value.
 #
 # After the keyword ALGO, you may define the clustering algorithm to use.
 # Possible values are:
 #    single, complete, average, weighted, centroid, median, ward
-# See https://docs.scipy.org/doc/scipy/reference/generated/scipy.cluster.hierarchy.linkage.html
-# for more details on the methods.
+# See the following link for more details on the methods.
+# https://docs.scipy.org/doc/scipy/reference/generated/scipy.cluster.hierarchy.linkage.html
+#
+# This file is used in step 9 (interactive heatmap) of the workflow.
 
 
 TAXA_TO_SHOW

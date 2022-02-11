@@ -165,7 +165,7 @@ def parse_blast_result(blast_xml, TF, top=0, exclude=None):
 					species = taxinfo['name']
 					rank = taxinfo['rank']
 					lineage_str = '>'.join(TF.get_lineage(taxid, display = 'name'))
-					protname = hit.title.split('[')[0].rstrip()
+					protname = hit.title.split('[', maxsplit=1)[0].rstrip()
 
 					result.append(f'{taxid}\t{acc}\t{species}\t{rank}\t{evalue}\t{alignment_length}\t{lineage_str}\t{protname}\t{query}')
 
@@ -232,7 +232,7 @@ def table_for_interactive_heatmaps(parsed_results, TF):
 				if evalue == '0.0':
 					e_val = 200
 				elif 'e' in evalue:
-					e_val = -1 * int(evalue.split('e')[1])
+					e_val = -1 * int(evalue.split('e', maxsplit=1)[1])
 				else:
 					e_val = math.ceil(math.log10(float(evalue)))
 
@@ -334,7 +334,7 @@ def _get_tree_elements(tree, return_set=False, splitting=True):
 			continue
 		if splitting:
 			try:
-				line = line.split('^')[1]
+				line = line.split('^', maxsplit=1)[1]
 			except IndexError:
 				print(line)
 				raise
@@ -629,7 +629,7 @@ def similarity_matrix(names):
 				lline = line.split('\t')
 				evalue = lline[4]
 				if 'e-' in evalue:
-					evalue = int(evalue.split('e-')[1])
+					evalue = int(evalue.split('e-', maxsplit=1)[1])
 					if evalue > 150:
 						evalue = 150
 				elif evalue == '0.0':
