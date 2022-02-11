@@ -672,16 +672,16 @@ def main():
 	def to_set(string):
 		return set(string.split(','))
 
-	workflow = '\n'.join(textwrap.wrap('''The following is a list of the
-	workflow. The names or numbers can be used for the -s or -o
-	arguments.''', width = 80))
+	workflow = '\n'.join(textwrap.wrap('The following is a list of the '
+	'workflow. The names or numbers can be used for the -s or -o '
+	'arguments.', width = 80))
 
 	workflow += '\n\n' + '\n'.join(
 		(f'{i:>2}. {name:<8} {tasks[name][0]}' for i, name in enumerate(tasknames))
 	)
 
 	parser = argparse.ArgumentParser(
-		description='This module provides you with tools to run'
+		description='This module provides you with tools to run '
 		'phylogenetic analyses. Exactly one argument must be given.')
 
 	parser.add_argument('-l', '--list', action='store_true',
@@ -703,13 +703,13 @@ def main():
 		help='Run only the given step [e.g. 4 or unique]')
 
 	parser.add_argument('-d', '--database', default='',
-		help='Path to the Blast database to use. Only needed when'
+		help='Path to the Blast database to use. Only needed when '
 		'actually running Blast (-b or -[o|s] blast)')
 
 	parser.add_argument('-e', '--exclude', type=to_set, default={118797, 59538, 7213},
-		help='Comma-separated list of taxonomy ids to exclude. By default'
-		'the species Lipotes vexillifer (118797), Pantholops hodgsonii'
-		'(59538), and Ceratitis capitata (7213) are excluded due to'
+		help='Comma-separated list of taxonomy ids to exclude. By default '
+		'the species Lipotes vexillifer (118797), Pantholops hodgsonii '
+		'(59538), and Ceratitis capitata (7213) are excluded due to '
 		'known massive contamination of bacterial sequences in the genome.')
 
 	args = parser.parse_args()

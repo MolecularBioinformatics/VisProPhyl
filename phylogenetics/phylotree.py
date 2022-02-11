@@ -543,31 +543,31 @@ def main():
 
 	# General options
 	parser.add_argument('-t', '--tree', default='trees/general.tre',
-		help='Filename of .tre file for the tree. The file must be in'
-		'Newick format and the names in the format: name^taxid'
+		help='Filename of .tre file for the tree. The file must be in '
+		'Newick format and the names in the format: name^taxid '
 		'[default: %(default)s]')
 
 	parser.add_argument('-p', '--prune', default='tree_to_prune.txt',
-		help='Filename of the file with information, which nodes to prune'
+		help='Filename of the file with information, which nodes to prune '
 		'and delete. [default: %(default)s]')
 
 	parser.add_argument('-c', '--config', default='tree_config.txt',
-		help='Filename of the file that contains the config with the'
+		help='Filename of the file that contains the config with the '
 		'tree features and the colors. [default: %(default)s]')
 
 	parser.add_argument('-a', '--attr', default='attributes.txt',
-		help='Filename of the file with the tree attributes.'
+		help='Filename of the file with the tree attributes. '
 		'[default: %(default)s]')
 
 	parser.add_argument('--start_node', default=None,
-		help='If the tree should not start from root, give the exact name'
+		help='If the tree should not start from root, give the exact name '
 		'of the node that should be the root of the tree.')
 
 	parser.add_argument('-n', '--nocollapse', action='store_true',
 		help='If this flag is given, dont collapse the tree.')
 
 	parser.add_argument('-e', '--empty', action='store_true',
-		help='If this flag is given, show also species that do not have'
+		help='If this flag is given, show also species that do not have '
 		'any of the given features.')
 
 	parser.add_argument('-s', '--show', action='store_true',
@@ -577,7 +577,7 @@ def main():
 		help='Print the total number of hits in addition to Piechart size.')
 
 	parser.add_argument('-o', '--outfile', default='',
-		help='If a filename is given, save the tree to that file.'
+		help='If a filename is given, save the tree to that file. '
 		'Valid extensions are: svg, pdf, png')
 
 	parser.add_argument('-w', '--width', type=int, default=1000,

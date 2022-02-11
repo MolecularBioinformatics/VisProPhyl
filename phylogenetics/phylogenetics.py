@@ -688,6 +688,8 @@ def get_entries_from_blast_result(filename, cutoff=1e-30, TF=None):
 	hitfrom = None
 	hitto = None
 
+	# TODO: Isn't this something I should use Biopython for??
+
 	with open(filename) as xml:
 		for line in xml:
 			if '<accession>' in line:
