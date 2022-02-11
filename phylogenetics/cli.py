@@ -256,7 +256,6 @@ def init():
 	:creates: proteinlist.txt
 	:creates: tree_config.txt
 	:creates: tree_to_prune.txt
-	:creates: crosshits.txt
 	:creates: heatmap_config.txt
 	:creates: heatmap_template.html
 	:creates: fastas/
@@ -285,10 +284,6 @@ def init():
 	if not os.path.isfile('tree_to_prune.txt'):
 		with open('tree_to_prune.txt', 'wb') as out:
 			out.write(pkg_resources.resource_string('phylogenetics', 'templates/tree_to_prune.txt'))
-
-	if not os.path.isfile('crosshits.txt'):
-		with open('crosshits.txt', 'wb') as out:
-			out.write(pkg_resources.resource_string('phylogenetics', 'templates/crosshits.txt'))
 
 	if not os.path.isfile('heatmap_config.txt'):
 		with open('heatmap_config.txt', 'wb') as out:
@@ -635,8 +630,6 @@ tasks = {
 	'map': ('create hit mapping diagrams for each protein', show_blast_mapping),
 	'intheat': ('create an interactive heatmap (html)', int_heatmap),
 	'matrix': ('create a similarity matrix of all proteins', similarity_matrix),
-#	'crosshits': ('create files with all blast crosshits of certain proteins', get_crosshits),
-#	'crosshist': ('creates Histograms of e-value distribution for crosshits', cross_histograms),
 }
 
 tasknames = list(tasks)
