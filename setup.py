@@ -25,6 +25,8 @@ setuptools.setup(
                                     'blast2fasta = phylogenetics.blast2fasta:main'
                                     ]},
     install_requires=[
+        'PyQt5>=5.11.3',
+        'wheel>=0.33.0',
         'numpy>=1.15.1',
         'scipy>=0.16.0',
         'matplotlib>=3.1.1',

@@ -1,3 +1,5 @@
+wheel
+PyQt5
 matplotlib
 numpy
 pandas
