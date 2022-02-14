@@ -3,6 +3,10 @@ Phylogenetics
 
 This package contains tools to map BLAST results on the NCBI taxonomy phylogenetic tree. It helps to analyse the presence/absence of proteins or genes in various taxa. This information can be useful, for example, for the analysis of two competing pathways (see e.g. [Bockwoldt et al. 2019](https://doi.org/10.1073/pnas.1902346116)).
 
+If you used this tool in your work, please cite:
+
+> TODO: Citation of our paper.
+
 
 Installation
 ------------
