@@ -190,7 +190,7 @@ class ConfigReader():
 
 				elif mode == 'colors':
 					lline = line.split(maxsplit=1)
-					self.hm_colors[lline[0]] = lline[1]
+					self.hm_colors[lline[0]] = f'#{lline[1]}'
 
 				elif mode == 'clustering':
 					if line in clustering_methods:
@@ -298,14 +298,13 @@ def run_blast():
 	'''
 	Blasts a list of files with Blastp against the provided database.
 
-	:param db: The database to blast against
 	:creates: `blastresults/*.xml`
 	'''
 
 	os.makedirs('blastresults', exist_ok=True)
 
 	if not blastdb:
-		raise ValueError('blastdb is empty. Run this script with -d /path/to/blastdb')
+		raise ValueError('blastdb is empty. Run this script with -d blastdb')
 
 	file_list = CR.get_protein_files(prefix = 'fastas/', suffix = '.fasta')
 	outstring = 'Now blasting {:' + str(len(str(len(file_list)))) + 'd}/{}: {}'
@@ -586,7 +585,7 @@ def int_heatmap():
 	Creates an interactive heatmap as html file with javascript.
 
 	:uses: heatmap_template.html
-	:creates: out.html
+	:creates: heatmap.html
 	'''
 
 	taxa_to_check = CR.get_heatmap_taxa()
@@ -615,7 +614,7 @@ def int_heatmap():
 
 	html = phylo.interactive_heatmap(matrix, tick_taxa, tick_proteins, colors, template, method)
 
-	open('out.html', 'w').write(html)
+	open('heatmap.html', 'w').write(html)
 
 
 tasks = {

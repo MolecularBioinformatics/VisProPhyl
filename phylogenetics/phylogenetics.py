@@ -6,7 +6,6 @@ import re
 import sys
 
 from functools import partial
-from multiprocessing import cpu_count
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -85,7 +84,7 @@ class NodeSanitizer():
 				print(elem)
 
 
-def run_blastp(query, outfilename, blastdb, evalue=1, maxthreads=cpu_count(), remote=True):
+def run_blastp(query, outfilename, blastdb, evalue=1, maxthreads=1, remote=True):
 	'''
 	Run Blastp. This may take a long time (several minutes up to
 	half-an-hour depending on the computer power and the size of the
