@@ -1,45 +1,67 @@
 Phylogenetics
 =============
 
-TODO: Description of what this is :)
+This package contains tools to map BLAST results on the NCBI taxonomy phylogenetic tree. It helps to analyse the presence/absence of proteins or genes in various taxa. This information can be useful, for example, for the analysis of two competing pathways (see e.g. [Bockwoldt et al. 2019](https://doi.org/10.1073/pnas.1902346116)).
 
+
+Installation
+------------
+
+You will need [Python 3.6+](https://www.python.org/) and, optionally, [BLAST+](https://blast.ncbi.nlm.nih.gov/Blast.cgi?CMD=Web&PAGE_TYPE=BlastDocs&DOC_TYPE=Download). Everything else can be install using `pip`. We suggest to use a [virtual environment](https://docs.python.org/3/library/venv.html) to install everything into.
 
 ```sh
 $ pip install phylogenetics ### TODO: This is not working for now!
 ### TODO: Use for now:
-$ pip install wheel  # The package ete3 needs wheel to be installed first...
 $ cd path/to/Phylogenetics
+$ pip install wheel  # The package ete3 needs wheel to be installed first...
 $ pip install -e .
 ```
 
 
-Todo
-----
+Components
+----------
 
-* phylogenetics/lineage_values* → have to be incorporated
-* no_sync/* → What to do with these random scripts and also other random script that fly around?
-* Thorough explanation of every script and module. Why is it there? What does it do? How to use?
-    * phylogenetics
-    * phylotree
-    * msa_blast
-    * lineage_values*
-    * phylogenetics/phylogenetics.py
-    * phylogenetics/venn.py
+This package consists of four command line tools and one importable Python module. All command line tools can be run with `--help` to get help.
 
 
-phylogenetics.py
-----------------
+Workflow
+--------
 
-This script does many phylogenetic analyses based on Blast results. It also creates the basics for `phylotree.py`.
+A typical workflow is described in (TODO: Our paper) and can be summed up to these steps:
 
-To begin, run `phylogenetics.py --init` to initialise the folder structure and templates. Create one fasta file in `fastas/` for each sequence you want to have analysed. I suggest to run blast online on the NCBI homepage.
+1. Create a folder for your project. Open a terminal/shell in this folder and run `phylogenetics --init`.
+2. Collect fasta files of your proteins or genes of interest. These are called seeds. Fasta files of multiple species for the same protein or gene are possible. Place the fasta files in the `fasta` folder of your project. Modify the files `proteinlist.txt` and `limits.txt`.
+3. Run BLAST against the database of your choice (e.g. `nr` for proteins, `nt` for genes). This can be done using the command line tool or the NCBI BLAST website. It is important that taxonomy ids are included in the results. This is given in all NCBI databases. For your own databases, please consult the documentation for [`makeblastdb`](https://www.ncbi.nlm.nih.gov/books/NBK569841/) on how to include taxonomy ids. If you run BLAST on the NCBI Website, make sure to download the result as "Single-file XML2" and save them to the `blastresults` folder with the same filename as the corresponding fasta file but with `.xml` instead of `.fasta`.
+4. Run the command `phylogenetics --all`.
+5. Modify the files `tree_config.txt` and `tree_to_prune.txt`.
+6. Run the command `phylotree --show`. You may want to go forth and back between modifying `tree_to_prune.txt` and visualizing the tree until the focus of the tree is right.
+7. Save the tree using `phylotree --outfile tree_name.pdf`.
+8. If you are interested in the interactive heatmap, modify `heatmap_config.txt` and run `phylogenetics --only intheat`.
 
-Move the resulting xml files to the folder `blastresults/`. Then have a look at the various `.txt` files. They have instructions written inside them. Here is a short overview of what they are doing:
 
-- *heatmap_config.txt*: Define the species to show in the heatmap
-- *limits.txt*: Define e-value and length limits for proteins to be considered by the analysis
-- *proteinlist.txt*: Define the proteins used. Only proteins defined here will be considered. Also, if you used multiple sequences to pose for the same protein (e.g. splice variants or from different species), this has to be defined here
-- *tree_config.txt*: Necessary for `phylotree.py`
-- *tree_to_prune.txt*: Necessary for `phylotree.py`
+Output files
+------------
 
-After configuring the `.txt` files, run `phylogenetics.py --all` and examine the results.
+`histograms/` shows the length distribution of BLAST results for each seed. `blastmappings/` shows where the seeds map on the BLAST results dependent on the e-value cutoff. Both can be used to tweak `limits.txt`.
+
+`trees/` contains the trees for each seed. These trees contain all species in which the seed was found by BLAST. `general.tre` is the combined tree for all seeds.
+
+`heatmap.html` is an interactive heatmap of selected taxa. You can select taxa and other parameters in `heatmap_config.txt` and re-run `phylogenetics --only intheat`.
+
+`matrix.csv` is a table that shows how similar two seeds are. The number of the cell where seed A and seed B cross is the e-value at which the BLAST search of seed A found seed B.
+
+
+Other command line tools
+------------------------
+
+`blast2fasta` can be used to download sequences based on BLAST results.
+
+`lineage_values` TODO
+
+
+Importable modules
+------------------
+
+`phylogenetics` can not only used as command line tool, but also imported for your own workflows without the hardcoded filenames etc.
+
+`venn` can create Venn diagrams. There is no direct integration with the other tools in this package, but it may serve useful for your own custom workflows.
