@@ -1,5 +1,25 @@
 #!/usr/bin/env python3
 
+
+'''
+This script is meant to be changed to fit your needs.
+It will write a plot to "input_filename.pdf".
+This plot will contain the best e-value for a seed that is not in the
+remaining lineage.
+Run like this:
+$ python3 lineage_values.py input_filename
+`input_filename` should point to a file that looks like this:
+
+```
+taxid
+
+prot1	path/to/blastresult_prot1a.xml path/to/blastresult_prot1b.xml
+prot2	path/to/blastresult_prot2.xml
+...
+```
+'''
+
+
 from taxfinder import TaxFinder
 from Bio.Blast import NCBIXML
 import sys
@@ -75,21 +95,18 @@ if __name__ == '__main__':
 	interesting = {}
 
 	with open(sys.argv[1]) as f:
-		loi = next(f).split()
-		if len(loi) == 2:
-			lineage_of_interest = get_loi(*loi)
-		else:
-			lineage_of_interest = list(TF.get_lineage_fast(int(loi[0])))
+		loi = int(next(f).strip())
+		lineage_of_interest = list(TF.get_lineage_fast(loi))
 
 		for line in f:
-			line = line.rstrip()
+			line = line.strip()
 			if not line:
 				panels.append([])
 				continue
 
 			lline = line.split()
 			fns = []
-			for fn in lline[1].split(','):
+			for fn in lline[1:]:
 				fns.extend(glob(fn))
 			panels[-1].append(lline[0])
 			interesting[lline[0]] = tuple(fns)
@@ -139,7 +156,7 @@ if __name__ == '__main__':
 		legendnames = []
 
 		for i, name in enumerate(sorted(panel)):
-			value_list = np.array([values[name][x] for x in lineage_of_interest], dtype=np.float)
+			value_list = np.array([values[name][x] for x in lineage_of_interest], dtype=float)
 			pl = ax.plot(x_values, value_list, linestyle='-', color=colors[i], marker=markers[i%len(panel)])[0]
 
 			legendlines.append(pl)
