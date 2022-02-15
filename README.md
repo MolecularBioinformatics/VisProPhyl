@@ -60,8 +60,6 @@ Other command line tools
 
 `blast2fasta` can be used to download sequences based on BLAST results.
 
-`lineage_values` TODO
-
 
 Importable modules
 ------------------
@@ -69,3 +67,13 @@ Importable modules
 `phylogenetics` can not only used as command line tool, but also imported for your own workflows without the hardcoded filenames etc.
 
 `venn` can create Venn diagrams. There is no direct integration with the other tools in this package, but it may serve useful for your own custom workflows.
+
+
+Utilities
+---------
+
+There are some utility scripts that are only on Github and not downloaded by `pip`. You can find them in the `utils` folder in the repository. These scripts are not polished and are meant to be changed before using them. They might come in handy, though, so we did not delete them outright. Each of the scripts has a little information about them in the top of the file.
+
+`lineage_value.py` gives an overview about how present given seeds are along a phylogenetic lineage. If you, for example, given human (taxonomy id 9606) as target, it will show, how well the seeds are found in Hominidae, Simiiformes, Primates, Mammalia, etc.
+
+`static_heatmap.py` is similar to the `intheat` step in `phylogenetics`. As the name says, it is not interactive, but can be used as a possible starting image for publication.
