@@ -669,7 +669,7 @@ def main():
 	global TF, CR, blastdb
 
 	def to_set(string):
-		return set(string.split(','))
+		return {int(x) for x in string.split(',')}
 
 	workflow = '\n'.join(textwrap.wrap('The following is a list of the '
 	'workflow. The names or numbers can be used for the -s or -o '
