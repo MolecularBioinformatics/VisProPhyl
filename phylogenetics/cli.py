@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
 
+'''
+This is the command line interface for phylogenetics. It is not supposed
+to be imported.
+'''
+
 import argparse
 import os
 import sys
@@ -155,8 +160,8 @@ class ConfigReader():
 		'''
 
 		ret = {}
-		for i in range(len(self.proteins)):
-			ret[self.proteins[i]] = set((prefix + fn + suffix for fn in self.protein_files[i]))
+		for i, prot in enumerate(self.proteins):
+			ret[prot] = set((prefix + fn + suffix for fn in self.protein_files[i]))
 
 		return ret
 
@@ -493,8 +498,8 @@ def tree_attributes():
 
 		out.write('---\n')
 
-		for k in sorted(attributes):
-			out.write('{}\t{}\n'.format(k, ''.join(attributes[k])))
+		for key in sorted(attributes):
+			out.write(f'{key}\t{"".join(attributes[key])}\n')
 
 
 def make_histograms():
@@ -507,9 +512,9 @@ def make_histograms():
 	protein_files = CR.get_protein_dict(prefix = 'fastas/', suffix = '.fasta')
 	seed_lengths = {}
 
-	for prot in protein_files:
+	for prot, files in protein_files.items():
 		seed_lengths[prot] = []
-		for filename in protein_files[prot]:
+		for filename in files:
 			with open(filename) as fastafile:
 				length = 0
 				next(fastafile)

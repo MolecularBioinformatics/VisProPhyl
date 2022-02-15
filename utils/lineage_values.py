@@ -20,21 +20,27 @@ prot2	path/to/blastresult_prot2.xml
 '''
 
 
-from taxfinder import TaxFinder
-from Bio.Blast import NCBIXML
-import sys
-import os
 import math
+import pickle
+import sys
+
+from glob import glob
+
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import gridspec
-import pickle
+from Bio.Blast import NCBIXML
 
+from taxfinder import TaxFinder
 
 nodedict = {}
 
 
 def get_node_from_taxid(loi, taxid, TF):
+	'''
+	Returns the best node for a given taxid in the lineage of interest (loi).
+	'''
+
 	if taxid in nodedict:
 		return nodedict[taxid]
 
@@ -58,12 +64,16 @@ def get_node_from_taxid(loi, taxid, TF):
 	return node
 
 
-def get_values(loi, blastXMLlist, TF):
+def get_values(loi, blast_xml_list, TF):
+	'''
+	Get evalues for the lineage of interest (loi) in each blast XML file.
+	'''
+
 	loidict = {x: None for x in loi}
 
-	for blastXML in blastXMLlist:
-		with open(blastXML, 'r') as f:
-			records = NCBIXML.parse(f)
+	for blast_xml in blast_xml_list:
+		with open(blast_xml, 'r') as infile:
+			records = NCBIXML.parse(infile)
 
 			for record in records:
 				for i, descr in enumerate(record.descriptions):
@@ -86,30 +96,32 @@ def get_values(loi, blastXMLlist, TF):
 	return loidict
 
 
-if __name__ == '__main__':
-	from glob import glob
+def main():
+	'''
+	Main entry point.
+	'''
 
 	TF = TaxFinder()
 
 	panels = []
 	interesting = {}
 
-	with open(sys.argv[1]) as f:
-		loi = int(next(f).strip())
+	with open(sys.argv[1]) as infile:
+		loi = int(next(infile).strip())
 		lineage_of_interest = list(TF.get_lineage_fast(loi))
 
-		for line in f:
+		for line in infile:
 			line = line.strip()
 			if not line:
 				panels.append([])
 				continue
 
 			lline = line.split()
-			fns = []
-			for fn in lline[1:]:
-				fns.extend(glob(fn))
+			filenames = []
+			for filename in lline[1:]:
+				filenames.extend(glob(filename))
 			panels[-1].append(lline[0])
-			interesting[lline[0]] = tuple(fns)
+			interesting[lline[0]] = tuple(filenames)
 
 	picklename = sys.argv[1] + '.p'
 
@@ -141,15 +153,16 @@ if __name__ == '__main__':
 
 	img_width = 16
 	img_height = 8*len(panels)
-	fig = plt.figure(figsize = (img_width, img_height))
-	gs = gridspec.GridSpec(len(panels), 2, width_ratios=[3, 1])
+	plt.figure(figsize = (img_width, img_height))
+	grid = gridspec.GridSpec(len(panels), 2, width_ratios=[3, 1])
 	axlist = []
 	for num, panel in enumerate(panels):
-		axlist.append(plt.subplot(gs[(num-1)*2]))
-		ax = axlist[-1]
+		axlist.append(plt.subplot(grid[(num-1)*2]))
+		axis = axlist[-1]
 
-		colors = plt.cm.rainbow(np.linspace(0,1,len(panel)))
-		markers = ['.', 'o', 'v', '^', '<', '>', '1', '2', '3', '4', '8', 's', 'p', '*', 'h', 'H', '+', 'x', 'D', 'd']
+		colors = plt.cm.get_cmap('rainbow', np.linspace(0,1,len(panel)))
+		markers = ['.', 'o', 'v', '^', '<', '>', '1', '2', '3', '4',
+		'8', 's', 'p', '*', 'h', 'H', '+', 'x', 'D', 'd']
 
 		x_values = np.arange(0, len(lineage_of_interest))
 		legendlines = []
@@ -157,32 +170,35 @@ if __name__ == '__main__':
 
 		for i, name in enumerate(sorted(panel)):
 			value_list = np.array([values[name][x] for x in lineage_of_interest], dtype=float)
-			pl = ax.plot(x_values, value_list, linestyle='-', color=colors[i], marker=markers[i%len(panel)])[0]
+			plot = axis.plot(x_values, value_list, linestyle='-', color=colors[i], marker=markers[i%len(panel)])[0]
 
-			legendlines.append(pl)
+			legendlines.append(plot)
 			legendnames.append(name)
 
 			mask = np.isfinite(value_list)
-			ax.plot(x_values[mask], value_list[mask], linestyle='--', color=colors[i])
+			axis.plot(x_values[mask], value_list[mask], linestyle='--', color=colors[i])
 
-		ax.set_ylabel('-log(e-value)')
-		ax.set_ylim((0, 210))
+		axis.set_ylabel('-log(e-value)')
+		axis.set_ylim((0, 210))
 
-		plt.sca(ax)
+		plt.sca(axis)
 		plt.xticks(range(len(lineage_names)), lineage_names, rotation=90)
 
-		axlist.append(plt.subplot(gs[(num-1)*2+1]))
-		ax = axlist[-1]
-		ax.axis('off')
-		ax.legend(legendlines, legendnames, loc='center left')
+		axlist.append(plt.subplot(grid[(num-1)*2+1]))
+		axis = axlist[-1]
+		axis.axis('off')
+		axis.legend(legendlines, legendnames, loc='center left')
 
 	plt.tight_layout()
 
 	if len(sys.argv) > 2 and sys.argv[2].startswith('sh'):
 		plt.show()
 	else:
-		fn = sys.argv[1] + '.pdf'
-		plt.savefig(fn)
-		print('File saved to "{}"'.format(fn))
+		outfile = sys.argv[1] + '.pdf'
+		plt.savefig(outfile)
+		print('File saved to "{}"'.format(outfile))
 
 
+
+if __name__ == '__main__':
+	main()

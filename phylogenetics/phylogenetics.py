@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
 
+'''
+This is the module for phylogenetics. This can be imported. If you want
+to use it via the command line, see cli.py.
+'''
+
 import math
 import os
 import re
@@ -10,7 +15,7 @@ from functools import partial
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import scipy.cluster.hierarchy as hierarchy
+from scipy.cluster import hierarchy
 
 from PIL import Image, ImageDraw, ImageFont
 from Bio.Blast import NCBIXML
@@ -124,8 +129,7 @@ def parse_blast_result(blast_xml, TF, top=0, exclude=None):
 	:returns: tsv table as string with the results
 	'''
 
-	if top < 0:
-		top = 0
+	top = max(top, 0)
 
 	result = []
 
@@ -523,7 +527,7 @@ def show_blast_mapping(blast_result_file, query_length):
 	draw.text((2, 540), '<= 1e-120', (0, 0, 0), fnt)
 
 	for num in range(6):
-		draw.text((2, 60 + 100 * num), 'n = {}'.format(num_hsps[num]), (0, 0, 0), fnt)
+		draw.text((2, 60 + 100 * num), f'n = {num_hsps[num]}', (0, 0, 0), fnt)
 
 	colors = [(0, 0, 0), (0, 0, 200), (0, 200, 0), (200, 0, 200), (200, 0, 0), (150, 150, 0)]
 
@@ -628,9 +632,7 @@ def similarity_matrix(names):
 				lline = line.split('\t')
 				evalue = lline[4]
 				if 'e-' in evalue:
-					evalue = int(evalue.split('e-', maxsplit=1)[1])
-					if evalue > 150:
-						evalue = 150
+					evalue = min(int(evalue.split('e-', maxsplit=1)[1]), 150)
 				elif evalue == '0.0':
 					evalue = 150
 				else:
@@ -703,7 +705,7 @@ def get_entries_from_blast_result(filename, cutoff=1e-30, TF=None):
 				try:
 					taxid = TF.get_species_from_subspecies(taxid)
 				except ValueError:
-					print('Taxid {} not found!'.format(taxid), file=sys.stderr)
+					print(f'Taxid {taxid} not found!', file=sys.stderr)
 				except AttributeError:
 					pass
 
@@ -759,13 +761,13 @@ def download_nucleotide_sequences(entries, mail, title=0, strip=False, logfile=N
 	for current, taxid in enumerate(entries, start=1):
 		print('\r' + ' '*75, end='\r', flush=True, file=logfile)
 
-		print('Running seq {:3d} of {:3d}: {:<15}'.format(current, total, entries[taxid][0]), end='', flush=True, file=logfile)
+		print(f'Running seq {current:3d} of {total:3d}: {entries[taxid][0]:<15}', end='', flush=True, file=logfile)
 
 		print('dl:', end='', flush=True, file=logfile)
 		try:
 			handle = Entrez.efetch(db='nuccore', id=entries[taxid][0], rettype='gb', retmode='text')
 		except IOError as err:
-			print('\r{}: {}'.format(entries[taxid][0], err), file=logfile)
+			print(f'\r{entries[taxid][0]}: {err}', file=logfile)
 			continue
 
 		print('ok parse:', end='', flush=True, file=logfile)
@@ -785,7 +787,7 @@ def download_nucleotide_sequences(entries, mail, title=0, strip=False, logfile=N
 				(start <= entries[taxid][3] and end >= entries[taxid][4]):
 					break
 		else:
-			print('\r{}: No CDS{}'.format(entries[taxid][0], ' '*40), file=logfile)
+			print(f'\r{entries[taxid][0]}: No CDS{" "*40}', file=logfile)
 			continue
 
 		cds = str(sequence[start:end])
@@ -794,24 +796,24 @@ def download_nucleotide_sequences(entries, mail, title=0, strip=False, logfile=N
 			if cds[-3:] == 'CAT' and cds[:3] in ['CTA', 'TCA', 'TTA']:
 				cds = str(sequence[start:end].reverse_complement())
 			else:
-				print('\r{}: No ATG or Stop codon found! Sequence will be omitted{}'.format(entries[taxid][0], ' '*30), file=logfile)
+				print(f'\r{entries[taxid][0]}: No ATG or Stop codon found! Sequence will be omitted{" "*30}', file=logfile)
 				continue
 
 		if len(cds) % 3:
-			print('\r{}: Possible frameshit! Sequence will be omitted{}'.format(entries[taxid][0], ' '*40), file=logfile)
+			print(f'\r{entries[taxid][0]}: Possible frameshit! Sequence will be omitted{" "*40}', file=logfile)
 			continue
 
 		if re.search(r'[^ACGT]', cds):
-			print('\r{}: Non canonical DNA base! Sequence will be included in output.{}'.format(entries[taxid][0], ' '*40), file=logfile)
+			print(f'\r{entries[taxid][0]}: Non canonical DNA base! Sequence will be included in output.{" "*40}', file=logfile)
 
 		if strip and cds[-3:] in ['TAA', 'TGA', 'TAG']:
 			cds = cds[:-3]
 
-		fasta_head = '>{}_{}'.format(entries[taxid][0], entries[taxid][2].replace(' ', '-'))
+		fasta_head = f'>{entries[taxid][0]}_{entries[taxid][2].replace(" ", "-")}'
 		if title:
 			fasta_head = fasta_head[:title]
 
-		out.append('{}\n{}'.format(fasta_head, cds))
+		out.append(f'{fasta_head}\n{cds}')
 
 	print('', file=logfile)
 
@@ -846,7 +848,7 @@ def download_protein_sequences(entries, mail, title=0, logfile=None):
 		try:
 			handle = Entrez.efetch(db='protein', id=entries[taxid][0], rettype='fasta', retmode='text')
 		except IOError as err:
-			print('\r{}: {}'.format(entries[taxid][0], err), file=logfile)
+			print(f'\r{entries[taxid][0]}: {err}', file=logfile)
 			continue
 
 		fasta = str(SeqIO.read(handle, 'fasta')._seq)
@@ -854,11 +856,11 @@ def download_protein_sequences(entries, mail, title=0, logfile=None):
 
 		print('ok parse:', end='', flush=True, file=logfile)
 
-		fasta_head = '>{}_{}'.format(entries[taxid][0], entries[taxid][2].replace(' ', '-'))
+		fasta_head = f'>{entries[taxid][0]}_{entries[taxid][2].replace(" ", "-")}'
 		if title:
 			fasta_head = fasta_head[:title]
 
-		out.append('{}\n{}'.format(fasta_head, fasta))
+		out.append(f'{fasta_head}\n{fasta}')
 
 	print('', file=logfile)
 

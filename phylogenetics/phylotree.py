@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
 
+'''
+This is the command line tool phylotree. This is not supposed to be imported.
+'''
+
 import argparse
 import logging
 import math

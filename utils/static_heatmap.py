@@ -8,24 +8,32 @@ $ python3 static_heatmap.py > heatmap.svg
 '''
 
 
-import sys
-
 from PIL import ImageFont
 
 
-
 def get_string_pixel_length(string, font='LiberationSans-Regular', size=20):
+	'''
+	Returns the width in pixels of a given string in a given font and size.
+	'''
+
 	container = ImageFont.truetype(font, size)
 	dimensions = container.getsize(string)
+
 	return dimensions[0]
 
 
-def staticHeatmap(taxa, proteins, cutoff = None):
+def static_heatmap(taxa, proteins, cutoff = None):
 	'''
-	Create a static heatmap as SVG. Taxa and proteins are lists of strings. Taxa must be in the form "printable_name^taxid" where underscores will be replaced by spaces. Both taxa and proteins will be shown in order of the list.
-	If cutoff is None (default), the heatmap will be shown as greyscale (the better the hit, the darker). Else, the heatmap will be shown black/white where values above the cutoff will be filled. The cutoff must be an integer, the negative log of the evalue (e.g. 1e-30 → cutoff = 30).
+	Create a static heatmap as SVG. Taxa and proteins are lists of strings.
+	Taxa must be in the form "printable_name^taxid" where underscores will
+	be replaced by spaces. Both taxa and proteins will be shown in order
+	of the list.
+	If cutoff is None (default), the heatmap will be shown as greyscale
+	(the better the hit, the darker). Else, the heatmap will be shown
+	black/white where values above the cutoff will be filled. The cutoff
+	must be an integer, the negative log of the evalue
+	(e.g. 1e-30 → cutoff = 30).
 	'''
-
 
 	# width, height, proteins, taxa, squares
 	template = '''<?xml version="1.0" encoding="UTF-8" standalone="no"?>
@@ -65,8 +73,8 @@ style="fill:rgb{color};fill-opacity:1;stroke:none;" />'''
 	matrix = {}
 	for i, protein in enumerate(proteins):
 		matrix[protein] = {x: 0 for x in taxids}
-		with open('interactivetables/{}.tsv'.format(protein), 'r') as f:
-			for line in f:
+		with open('interactivetables/{}.tsv'.format(protein), 'r') as infile:
+			for line in infile:
 				lline = line.split()
 				if lline[0] in taxids:
 					matrix[protein][lline[0]] = int(lline[1])
@@ -89,28 +97,28 @@ style="fill:rgb{color};fill-opacity:1;stroke:none;" />'''
 	offset_y_taxa = offset_y_squares + int(width*0.9)
 
 	for i, taxon in enumerate(taxnames):
-		t = temp_taxon.format(x=offset_x_taxa, y=offset_y_taxa + i*(width+dist), text=taxon)
-		print_taxa.append(t)
+		tax = temp_taxon.format(x=offset_x_taxa, y=offset_y_taxa + i*(width+dist), text=taxon)
+		print_taxa.append(tax)
 
-	for a, protein in enumerate(proteins):
-		xpos = offset_x_proteins + a*(width+dist)
+	for protnum, protein in enumerate(proteins):
+		xpos = offset_x_proteins + protnum*(width+dist)
 		ypos = offset_y_proteins
 		rotx = xpos
 		roty = ypos
-		t = temp_protein.format(x=xpos, y=ypos, rotx=rotx, roty=roty, text=protein)
-		print_proteins.append(t)
+		tax = temp_protein.format(x=xpos, y=ypos, rotx=rotx, roty=roty, text=protein)
+		print_proteins.append(tax)
 
-		for b, taxid in enumerate(taxids):
+		for taxnum, taxid in enumerate(taxids):
 			if cutoff is None:
-				e = 255 - int((min(matrix[protein][taxid], upper_limit) / 150)*255)
-				c = (e, e, e)
+				norm_evalue = 255 - int((min(matrix[protein][taxid], upper_limit) / 150)*255)
+				color = (norm_evalue, norm_evalue, norm_evalue)
 			else:
 				if matrix[protein][taxid] < cutoff:
-					c = (255,255,255)
+					color = (255,255,255)
 				else:
-					c = (0,0,0)
-			t = temp_square.format(y=offset_y_squares + b*(width + dist), x=offset_x_squares + a*(width + dist), size=width, color=c)
-			print_squares.append(t)
+					color = (0,0,0)
+			tax = temp_square.format(y=offset_y_squares + taxnum*(width + dist), x=offset_x_squares + protnum*(width + dist), size=width, color=color)
+			print_squares.append(tax)
 
 	total_width = offset_x_taxa + dist + max(get_string_pixel_length(x) for x in taxa)
 	total_height = offset_y_squares + (width + dist)*len(taxa)
@@ -120,7 +128,10 @@ style="fill:rgb{color};fill-opacity:1;stroke:none;" />'''
 	print(final)
 
 
-if __name__ == '__main__':
+def main():
+	'''
+	Main entry point.
+	'''
 
 	taxa_to_show = []
 	with open('heatmap_config.txt') as heatmap_file:
@@ -140,7 +151,7 @@ if __name__ == '__main__':
 			if line in keywords:
 				break
 
-			self.taxa_to_show.append(line)
+			taxa_to_show.append(line)
 
 	proteins_to_show = []
 	with open('proteinlist.txt') as protein_file:
@@ -152,7 +163,11 @@ if __name__ == '__main__':
 
 			name = line.split()[0]
 
-			self.proteins_to_show.append(name)
+			proteins_to_show.append(name)
 
 
-	staticHeatmap(taxa_to_show, proteins_to_show, None)
+	static_heatmap(taxa_to_show, proteins_to_show, None)
+
+
+if __name__ == '__main__':
+	main()

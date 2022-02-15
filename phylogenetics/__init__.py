@@ -4,6 +4,3 @@ from .phylogenetics import NodeSanitizer, run_blastp, parse_blast_result, combin
 from .venn import get_labels, venn
 
 __version__ = '0.0.1'
-
-
-
