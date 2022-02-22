@@ -1,26 +1,44 @@
 #!/usr/bin/env python3
 
-import sys
+'''
+This script is meant to be changed to fit your needs.
+It will write a static heatmap as svg to STDOUT.
+Run in a folder, where a whole Phylogenetics run is finished like this:
+$ python3 static_heatmap.py > heatmap.svg
+'''
+
+
 from PIL import ImageFont
 
 
-
 def get_string_pixel_length(string, font='LiberationSans-Regular', size=20):
+	'''
+	Returns the width in pixels of a given string in a given font and size.
+	'''
+
 	container = ImageFont.truetype(font, size)
 	dimensions = container.getsize(string)
+
 	return dimensions[0]
 
 
-def staticHeatmap(taxa, proteins, cutoff = None):
+def static_heatmap(taxa, proteins, cutoff = None):
 	'''
-	Create a static heatmap as SVG. Taxa and proteins are lists of strings. Taxa must be in the form "printable_name^taxid" where underscores will be replaced by spaces. Both taxa and proteins will be shown in order of the list.
-	If cutoff is None (default), the heatmap will be shown as greyscale (the better the hit, the darker). Else, the heatmap will be shown black/white where values above the cutoff will be filled. The cutoff must be an integer, the negative log of the evalue (e.g. 1e-30 → cutoff = 30).
+	Create a static heatmap as SVG. Taxa and proteins are lists of strings.
+	Taxa must be in the form "printable_name^taxid" where underscores will
+	be replaced by spaces. Both taxa and proteins will be shown in order
+	of the list.
+	If cutoff is None (default), the heatmap will be shown as greyscale
+	(the better the hit, the darker). Else, the heatmap will be shown
+	black/white where values above the cutoff will be filled. The cutoff
+	must be an integer, the negative log of the evalue
+	(e.g. 1e-30 → cutoff = 30).
 	'''
-
 
 	# width, height, proteins, taxa, squares
 	template = '''<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<svg viewBox="0 0 {width} {height}" width="{width}" height="{height}">
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 {width} {height}" width="100%" height="100%">
 {proteins}
 {taxa}
 {squares}
@@ -55,8 +73,8 @@ style="fill:rgb{color};fill-opacity:1;stroke:none;" />'''
 	matrix = {}
 	for i, protein in enumerate(proteins):
 		matrix[protein] = {x: 0 for x in taxids}
-		with open('interactivetables/{}.tsv'.format(protein), 'r') as f:
-			for line in f:
+		with open('interactivetables/{}.tsv'.format(protein), 'r') as infile:
+			for line in infile:
 				lline = line.split()
 				if lline[0] in taxids:
 					matrix[protein][lline[0]] = int(lline[1])
@@ -79,28 +97,28 @@ style="fill:rgb{color};fill-opacity:1;stroke:none;" />'''
 	offset_y_taxa = offset_y_squares + int(width*0.9)
 
 	for i, taxon in enumerate(taxnames):
-		t = temp_taxon.format(x=offset_x_taxa, y=offset_y_taxa + i*(width+dist), text=taxon)
-		print_taxa.append(t)
+		tax = temp_taxon.format(x=offset_x_taxa, y=offset_y_taxa + i*(width+dist), text=taxon)
+		print_taxa.append(tax)
 
-	for a, protein in enumerate(proteins):
-		xpos = offset_x_proteins + a*(width+dist)
+	for protnum, protein in enumerate(proteins):
+		xpos = offset_x_proteins + protnum*(width+dist)
 		ypos = offset_y_proteins
 		rotx = xpos
 		roty = ypos
-		t = temp_protein.format(x=xpos, y=ypos, rotx=rotx, roty=roty, text=protein)
-		print_proteins.append(t)
+		tax = temp_protein.format(x=xpos, y=ypos, rotx=rotx, roty=roty, text=protein)
+		print_proteins.append(tax)
 
-		for b, taxid in enumerate(taxids):
+		for taxnum, taxid in enumerate(taxids):
 			if cutoff is None:
-				e = 255 - int((min(matrix[protein][taxid], upper_limit) / 150)*255)
-				c = (e, e, e)
+				norm_evalue = 255 - int((min(matrix[protein][taxid], upper_limit) / 150)*255)
+				color = (norm_evalue, norm_evalue, norm_evalue)
 			else:
 				if matrix[protein][taxid] < cutoff:
-					c = (255,255,255)
+					color = (255,255,255)
 				else:
-					c = (0,0,0)
-			t = temp_square.format(y=offset_y_squares + b*(width + dist), x=offset_x_squares + a*(width + dist), size=width, color=c)
-			print_squares.append(t)
+					color = (0,0,0)
+			tax = temp_square.format(y=offset_y_squares + taxnum*(width + dist), x=offset_x_squares + protnum*(width + dist), size=width, color=color)
+			print_squares.append(tax)
 
 	total_width = offset_x_taxa + dist + max(get_string_pixel_length(x) for x in taxa)
 	total_height = offset_y_squares + (width + dist)*len(taxa)
@@ -110,33 +128,46 @@ style="fill:rgb{color};fill-opacity:1;stroke:none;" />'''
 	print(final)
 
 
-if __name__ == '__main__':
-	taxa_to_show = ['Homo_sapiens_(Primate)^9606',
-		'Mus_musculus_(Rodent)^10116',
-		'Gallus_gallus_(Bird)^9031',
-		'Chelonia_mydas_(Turtle)^8469',
-		'Python_bivittatus_(Snake)^176946',
-		'Xenopus_laevis_(Frog)^8355',
-		'Danio_rerio_(Fish)^7955',
-		'Branchiostoma_floridae_(Lancelet)^7739',
-		'Strongylocentrotus_purpuratus_(Sea_urchin)^7668',
-		'Drosophila_melanogaster_(Fly)^7227',
-		'Caenorhabditis_elegans_(Nematode)^6239',
-		'Helobdella_robusta_(Annelid)^6412',
-		'Schistosoma_haematobium_(Platyhelminthes)^6185',
-		'Saccharomyces_cerevisiae_(Fungi)^4932',
-		'Arabidopsis_thaliana_(Plant)^3702',
-		'Acanthamoeba_castellanii_(Amoeba)^5755']
-	proteins_to_show = ['PRMT1',
-		'PRMT2',
-		'PRMT3',
-		'PRMT4',
-		'PRMT5',
-		'PRMT6',
-		'PRMT7',
-		'PRMT8',
-		'PRMT9',
-		'PRMT11',
-		'mTOR']
+def main():
+	'''
+	Main entry point.
+	'''
 
-	staticHeatmap(taxa_to_show, proteins_to_show, None)
+	taxa_to_show = []
+	with open('heatmap_config.txt') as heatmap_file:
+
+		active = False
+		keywords = {'TAXA_TO_SHOW', 'COLORS', 'ALGO'}
+
+		for line in heatmap_file:
+			line = line.split('#', maxsplit=1)[0].strip()
+			if not line:
+				continue
+
+			if not active and line == 'TAXA_TO_SHOW':
+				active = True
+				continue
+
+			if line in keywords:
+				break
+
+			taxa_to_show.append(line)
+
+	proteins_to_show = []
+	with open('proteinlist.txt') as protein_file:
+
+		for line in protein_file:
+			line = line.split('#', maxsplit=1)[0].strip()
+			if not line:
+				continue
+
+			name = line.split()[0]
+
+			proteins_to_show.append(name)
+
+
+	static_heatmap(taxa_to_show, proteins_to_show, None)
+
+
+if __name__ == '__main__':
+	main()

@@ -1,0 +1,9 @@
+wheel
+PyQt5
+matplotlib
+numpy
+pandas
+scipy
+Pillow
+biopython
+ete3
