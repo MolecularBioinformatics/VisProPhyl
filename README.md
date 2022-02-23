@@ -13,12 +13,52 @@ Installation
 
 You will need [Python 3.6+](https://www.python.org/) and, optionally, [BLAST+](https://blast.ncbi.nlm.nih.gov/Blast.cgi?CMD=Web&PAGE_TYPE=BlastDocs&DOC_TYPE=Download). Everything else can be install using `pip`. We suggest to use a [virtual environment](https://docs.python.org/3/library/venv.html) to install everything into.
 
+**Yin** and **Ines**: As this repo is *private*, the installation procedure is more complicated than it should be. For now, please follow these instructions:
+
+```sh
+# Create some folder to save everything to
+mkdir phylotest
+cd phylotest
+
+# Clone the repositories
+git clone git@github.com:MolecularBioinformatics/Phylogenetics.git
+git clone git@github.com:MolecularBioinformatics/taxfinder.git
+
+# Create a virtual environment. Not strictly necessary,
+# but helps fiddling with different versions.
+python3 -m venv phyloenv
+
+# Activate the environment. You have to do this every time, you want
+# to work with Phylogenetics and open a new shell.
+source /path/to/phylotest/phyloenv/bin/activate
+
+# Install Python wheel
+pip install wheel
+
+# Install taxfinder and Phylogenetics
+cd taxfinder
+pip install -e .
+cd ../Phylogenetics
+pip install -e .
+cd ..
+
+# Now you should have three folders here:
+# phyloenv
+# Phylogenetics
+# taxfinder
+# You might want to make a new folder for running the tests:
+mkdir actual_tests
+cd actual_tests
+
+# Now, you can run all the good stuff. Start, for example, with:
+phylogenetics --init
+```
+
+
+Not working as long as the repo is private:
+
 ```sh
 $ pip install phylogenetics ### TODO: This is not working for now!
-### TODO: Use for now:
-$ cd path/to/Phylogenetics
-$ pip install wheel  # The package ete3 needs wheel to be installed first...
-$ pip install -e .
 ```
 
 
