@@ -604,18 +604,46 @@ def int_heatmap():
 	for i, tax in enumerate(taxa_to_check):
 		taxname, taxid = tax.split('^', maxsplit=1)
 		tick_taxa.append(taxname.replace('_', ' '))
-		taxids[taxid] = i
+		taxids[int(taxid.rstrip())] = i
 
 	tick_proteins = proteins_to_check[:]
+
+	lineages = {}
+	with open('taxids/general.taxids') as all_taxids:
+		for taxid in all_taxids:
+			lineages[int(taxid.rstrip())] = TF.get_lineage_fast(int(taxid))
+
+	todos = {}
+	for taxid in taxids:
+		if TF.get_tax_info(taxid)['rank'] == 'species':
+			todos[taxid] = [taxid]
+			continue
+		todos[taxid] = []
+		for basic_taxid, lineage in lineages.items():
+			if taxid in lineage:
+				todos[taxid].append(basic_taxid)
 
 	matrix = []
 	for i, protein in enumerate(proteins_to_check):
 		matrix.append([-100] * len(taxa_to_check))
+		taxid2evalue = {}
 		with open(f'interactivetables/{protein}.tsv') as tablefile:
 			for line in tablefile:
 				lline = line.split(maxsplit=1)
-				if lline[0] in taxids:
-					matrix[i][taxids[lline[0]]] = int(lline[1])
+				taxid2evalue[int(lline[0])] = int(lline[1])
+
+		for taxid, pos in taxids.items():
+			best = 0
+			for todo in todos[taxid]:
+				try:
+					evalue = taxid2evalue[todo]
+				except KeyError:
+					# If the key is not found, the species is not in
+					# the results for this protein, i.e. no evalue
+					continue
+				if evalue > best:
+					best = evalue
+			matrix[i][pos] = best
 
 	html = phylo.interactive_heatmap(matrix, tick_taxa, tick_proteins, colors, template, method)
 
