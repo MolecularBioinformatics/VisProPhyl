@@ -1,4 +1,4 @@
-Phylogenetics
+VisProPhyl
 =============
 
 This package contains tools to map BLAST results on the NCBI taxonomy phylogenetic tree. It helps to analyse the presence/absence of proteins or genes in various taxa. This information can be useful, for example, for the analysis of two competing pathways (see e.g. [Bockwoldt et al. 2019](https://doi.org/10.1073/pnas.1902346116)).
@@ -21,7 +21,7 @@ mkdir phylotest
 cd phylotest
 
 # Clone the repositories
-git clone git@github.com:MolecularBioinformatics/Phylogenetics.git
+git clone git@github.com:MolecularBioinformatics/VisProPhyl.git
 git clone git@github.com:MolecularBioinformatics/taxfinder.git
 
 # Create a virtual environment. Not strictly necessary,
@@ -29,22 +29,22 @@ git clone git@github.com:MolecularBioinformatics/taxfinder.git
 python3 -m venv phyloenv
 
 # Activate the environment. You have to do this every time, you want
-# to work with Phylogenetics and open a new shell.
+# to work with VisProPhyl and open a new shell.
 source /path/to/phylotest/phyloenv/bin/activate
 
 # Install Python wheel
 pip install wheel
 
-# Install taxfinder and Phylogenetics
+# Install taxfinder and VisProPhyl
 cd taxfinder
 pip install -e .
-cd ../Phylogenetics
+cd ../VisProPhyl
 pip install -e .
 cd ..
 
 # Now you should have three folders here:
 # phyloenv
-# Phylogenetics
+# VisProPhyl
 # taxfinder
 # You might want to make a new folder for running the tests:
 mkdir actual_tests
