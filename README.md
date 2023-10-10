@@ -108,6 +108,8 @@ Importable modules
 
 `venn` can create Venn diagrams. There is no direct integration with the other tools in this package, but it may serve useful for your own custom workflows.
 
+`sample_taxids` can be used to randomly sample taxids from a file of taxids, and write these out to a heatmap configuration file. Rerunning the heatmap step of phylogenetics will then redraw the heatmap with sampled taxids.
+
 
 Utilities
 ---------
