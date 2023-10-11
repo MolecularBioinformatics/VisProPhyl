@@ -564,8 +564,6 @@ def interactive_heatmap(matrix, tick_taxa, tick_proteins, colors, template, meth
 
 	pdmatrix = pd.DataFrame(matrix, columns = tick_taxa, index = tick_proteins)
 
-	hierarchy.set_link_color_palette(['m', 'c', 'y', 'k'])
-
 	linkage = hierarchy.linkage(pdmatrix, method=method)
 	dendro = hierarchy.dendrogram(linkage, labels = tick_proteins,
 		no_plot = True, distance_sort = True)
