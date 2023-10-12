@@ -28,12 +28,13 @@ setuptools.setup(
         'PyQt5>=5.11.3',
         'wheel>=0.33.0',
         'numpy>=1.15.1',
-        'scipy>=0.16.0',
+        'scipy>=1.11.0',
         'matplotlib>=3.1.1',
         'pandas>=1.0.0',
         'Pillow>=6.0.0',
         'biopython>=1.7.4',
-        'ete3>=3.1.1'
+        'ete3>=3.1.1',
+	'taxfinder>=0.0.1'
     ],
     classifiers=[
         'Programming Language :: Python :: 3 :: Only',
