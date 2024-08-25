@@ -11,16 +11,18 @@ If you used this tool in your work, please cite:
 Installation
 ------------
 
-You will need [Python 3.6+](https://www.python.org/) and, optionally, [BLAST+](https://blast.ncbi.nlm.nih.gov/Blast.cgi?CMD=Web&PAGE_TYPE=BlastDocs&DOC_TYPE=Download). Everything else can be install using `pip`. We suggest to use a [virtual environment](https://docs.python.org/3/library/venv.html) to install everything into.
+You will need [Python 3.6+](https://www.python.org/) and, optionally, [BLAST+](https://blast.ncbi.nlm.nih.gov/Blast.cgi?CMD=Web&PAGE_TYPE=BlastDocs&DOC_TYPE=Download). Everything else can be install using `pip`. We suggest to use a [virtual environment](https://docs.python.org/3/library/venv.html) or [Conda environment](https://docs.conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html) to install everything into. The examples below are using virtual environments with conda environment equivalents given in the comments.
 
 ```sh
 # Create a virtual environment. Not strictly necessary,
-# but helps fiddling with different versions.
+# but generally recommended to avoid problems with conflicting versions
 python3 -m venv phyloenv
+# conda create -n phyloenv
 
 # Activate the environment. You have to do this every time, you want
 # to work with VisProPhyl and open a new shell.
 source /path/to/phylotest/phyloenv/bin/activate
+# conda activate phyloenv
 
 # Install VisProPhyl
 pip install visprophyl
@@ -33,10 +35,11 @@ taxfinder_update
 phylogenetics --init
 ```
 
-After the installation, when opening a new terminal, you only have to reactivate the virtual environment
+After the installation, when opening a new terminal, you only have to reactivate the virtual/conda environment
 
 ```sh
 source /path/to/phylotest/phyloenv/bin/activate
+# conda activate phyloenv
 ```
 
 Components
