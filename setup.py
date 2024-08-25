@@ -25,16 +25,16 @@ setuptools.setup(
                                     'blast2fasta = phylogenetics.blast2fasta:main'
                                     ]},
     install_requires=[
-        'PyQt5>=5.11.3',
-        'wheel>=0.33.0',
-        'numpy>=1.15.1',
-        'scipy>=1.11.0',
-        'matplotlib>=3.1.1',
-        'pandas>=1.0.0',
-        'Pillow>=6.0.0',
-        'biopython>=1.7.4',
-        'ete3>=3.1.1',
-	'taxfinder>=0.0.1'
+        'PyQt5 >= 5.11.3, < 6',
+        'wheel >= 0.33.0, < 1',
+        'numpy >= 1.15.1, < 2',
+        'scipy >= 1.11.0, < 2',
+        'matplotlib >= 3.1.1, < 4',
+        'pandas == 1.*',
+        'Pillow == 10.*',
+        'biopython >= 1.74, <= 1.79',
+        'ete3 == 3.1.*',
+        'taxfinder >= 0.0.1'
     ],
     classifiers=[
         'Programming Language :: Python :: 3 :: Only',
