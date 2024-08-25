@@ -11,7 +11,7 @@ If you used this tool in your work, please cite:
 Installation
 ------------
 
-You will need [Python 3.6+](https://www.python.org/) and, optionally, [BLAST+](https://blast.ncbi.nlm.nih.gov/Blast.cgi?CMD=Web&PAGE_TYPE=BlastDocs&DOC_TYPE=Download). Everything else can be install using `pip`. We suggest to use a [virtual environment](https://docs.python.org/3/library/venv.html) or [Conda environment](https://docs.conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html) to install everything into. The examples below are using virtual environments with conda environment equivalents given in the comments.
+You will need [Python 3.6+](https://www.python.org/) and, optionally, [BLAST+](https://blast.ncbi.nlm.nih.gov/doc/blast-help/downloadblastdata.html#downloadblastdata). Everything else can be install using `pip`. We suggest to use a [virtual environment](https://docs.python.org/3/library/venv.html) or [Conda environment](https://docs.conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html) to install everything into. The examples below are using virtual environments with conda environment equivalents given in the comments.
 
 ```sh
 # Create a virtual environment. Not strictly necessary,

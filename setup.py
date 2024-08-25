@@ -32,7 +32,7 @@ setuptools.setup(
         'matplotlib >= 3.1.1, < 4',
         'pandas == 1.*',
         'Pillow == 10.*',
-        'biopython >= 1.74, <= 1.79',
+        'biopython >= 1.74, <= 1.84',
         'ete3 == 3.1.*',
         'taxfinder >= 0.0.1'
     ],

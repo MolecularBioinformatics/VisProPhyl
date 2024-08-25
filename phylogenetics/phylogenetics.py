@@ -8,9 +8,8 @@ to use it via the command line, see cli.py.
 import math
 import os
 import re
+import subprocess
 import sys
-
-from functools import partial
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -19,7 +18,6 @@ from scipy.cluster import hierarchy
 
 from PIL import Image, ImageDraw, ImageFont
 from Bio.Blast import NCBIXML
-from Bio.Blast.Applications import NcbiblastpCommandline
 from Bio import Entrez, SeqIO
 
 
@@ -105,16 +103,20 @@ def run_blastp(query, outfilename, blastdb, evalue=1, maxthreads=1, remote=True)
 	:creates: `outfilename`
 	'''
 
-	blast_cmd = partial(NcbiblastpCommandline, query=query, db=blastdb,
-	evalue=evalue, outfmt=16, out=outfilename, max_target_seqs=20000)
+	command = ['blastp', '-out', outfilename, '-outfmt', '16', '-query', query, '-db', blastdb, '-evalue', str(evalue), '-max_target_seqs', '20000'];
 
 	if remote:
-		cmdline = blast_cmd(remote=True)
+		command.append('-remote')
 	else:
-		cmdline = blast_cmd(num_threads=maxthreads)
+		command.extend(['-num_threads', str(maxthreads)])
 
-	if cmdline:
-		print(cmdline, file=sys.stderr)
+	print('$', ' '.join(command), file=sys.stderr)
+
+	result = subprocess.run(command)
+
+	if result.returncode != 0:
+		print(result.stderr.decode(), file=sys.stderr)
+		raise ValueError('Command did not run successfully')
 
 
 def parse_blast_result(blast_xml, TF, top=0, exclude=None):
@@ -154,6 +156,7 @@ def parse_blast_result(blast_xml, TF, top=0, exclude=None):
 				for hit in descr.items:
 					taxid = hit.taxid
 					if taxid is None:
+						print('No taxid was found. This can happen, if you did a blast search locally against a database without taxonomy information. Please have a look in the manual on how to do that. www.ncbi.nlm.nih.gov/books/NBK569841/', file=sys.stderr)
 						raise ValueError(f'There was no taxonomy id associated with hit {hit.accession} in file {blast_xml}')
 					lineage = TF.get_lineage(taxid, display = 'taxid')
 					if exclude:
