@@ -153,6 +153,8 @@ def parse_blast_result(blast_xml, TF, top=0, exclude=None):
 
 				for hit in descr.items:
 					taxid = hit.taxid
+					if taxid is None:
+						raise ValueError(f'There was no taxonomy id associated with hit {hit.accession} in file {blast_xml}')
 					lineage = TF.get_lineage(taxid, display = 'taxid')
 					if exclude:
 						stop = False
