@@ -1,0 +1,28 @@
+# All proteins given in this file will be considered by `phylogenetics`.
+# The first column gives the general protein name. It must not contain
+# any whitespace. In the second column, state the fasta file of the seed
+# protein. This way, you can define multiple seeds for the same protein.
+# Columns must be separated by whitespace.
+
+NAMPT nampt_homosapiens_P43490.fasta
+NAMPT nampt_creinhardtii_D9I2J1.fasta
+NAPRT naprt_ecoli_P18133.fasta
+NAPRT naprt_homosapiens_Q6XQN6.fasta
+NAPRT naprt_dmelanogaster_Q9VQX4.fasta
+NAPRT naprt_ddiscoideum_Q55G10.fasta
+NAPRT naprt1_athaliana_Q8RWM2.fasta
+NAPRT naprt2_athaliana_Q84WV8.fasta
+QPRT qprt_homosapiens_Q15274.fasta
+QPRT qprt_ddiscoideum_Q75JX0.fasta
+QPRT qprt_ntabacum_A0A1S4CL59.fasta
+UPRT uprt_scerevisiae_P18562.fasta
+UPRT uprt_ecoli_P0A8F0.fasta
+UPRT uprt_homosapiens_Q96BW1.fasta
+APT apt_athaliana_P31166.fasta
+APT apt_homosapiens_P07741.fasta
+APT apt_scerevisiae_P49435.fasta
+APT apt_ecoli_P69503.fasta
+APT apt_dmelanogaster_P12426.fasta
+HPRT hprt_homosapiens_P00492.fasta
+HPRT hprt_ecoli_P0A9M2.fasta
+HPRT hprt_ddiscoideum_Q54NJ8.fasta

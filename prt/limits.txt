@@ -1,0 +1,25 @@
+# This file defines limits for when Blast results are considered valid
+# for each protein.
+# The columns should be whitespace-separated.
+# Empty lines and everything behind a hash (#) is ignored.
+# The first column contains the protein name.
+# The second column contains the highest evalue that should be allowed.
+# The third column contains the lowest length that should be allowed.
+#
+# The `default` values are used when there are no values for a given protein.
+# Unspecified values must be marked with some letter or string (e.g. `x`).
+# Default values will be taken for unspecified values.
+#
+# This file is used in step 2 (combine parsed results) of the workflow.
+
+default	1e-30	50
+
+NAMPT		x	200
+QPRT		x	200
+UPRT		x	100
+NAPRT		x	100
+APT		x	100
+HPRT		x	100
+XGPT		x	75
+TRPD		x	175
+PYRE		x	100
