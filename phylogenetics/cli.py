@@ -296,7 +296,9 @@ def init():
 
 	if not os.path.isfile('heatmap_template.html'):
 		with open('heatmap_template.html', 'wb') as out:
-			out.write(pkg_resources.resource_string('phylogenetics', 'templates/heatmap_template.html'))
+			template = pkg_resources.resource_string('phylogenetics', 'templates/heatmap_template.html')
+			template = template.replace(b'{', b'{{').replace(b'}', b'}}').replace(b'<<<', b'{').replace(b'>>>', b'}')
+			out.write(template)
 
 
 def run_blast():
@@ -357,6 +359,8 @@ def parse_blast_results(to_parse = None, to_exclude=None):
 		basename = _get_basename(filename)
 		print(outstring.format(i+1, len(to_parse), basename), end='\r')
 		parsed_result = phylo.parse_blast_result(filename, TF = TF, top = 0, exclude=to_exclude)
+		if not parsed_result:
+			print(f'\nThe file {filename} did not yield any results.', file=sys.stderr)
 
 		with open(f'resulttables/{basename}.tsv', 'w') as out:
 			out.write(header)
@@ -386,8 +390,11 @@ def combine_parsed_results():
 
 		combined = phylo.combine_parsed_results(proteins[protein], max_evalue, min_length)
 
-		if combined:
-			open(outfn, 'w').write(combined)
+		if len(combined) > 1:
+			open(outfn, 'w').write('\n'.join(combined))
+		else:
+			print(f'\n    WARNING: There were no results for the protein {protein}', file=sys.stderr)
+			print('    You might want to check the blast results and evalue and length limits', file=sys.stderr)
 
 
 def tables_for_interactive_heatmap():
@@ -467,6 +474,10 @@ def make_newick():
 	sanitizer = phylo.NodeSanitizer()
 
 	for filename in todo:
+		if not os.path.isfile(filename) or os.path.getsize(filename) == 0:
+			print(f'\n    ERROR: The file {filename} does not exist or is empty', file=sys.stderr)
+			print('    Check for warnings about empty results before this error.', file=sys.stderr)
+			sys.exit(1)
 		outfn = f'trees/{_get_basename(filename)}.tre'
 		newick = phylo.make_newick(filename, sanitizer, TF)
 
@@ -689,7 +700,7 @@ def run_workflow(start, end=''):
 
 	startidx = tasknames.index(start)
 	for taskname in tasknames[startidx:endidx]:
-		print(f'{taskname}: "{tasks[taskname][0]}"')
+		print(f'{taskname}: "{tasks[taskname][0]}"{" "*40}')
 		task = tasks[taskname][1]
 		task()
 

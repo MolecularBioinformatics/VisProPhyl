@@ -49,7 +49,7 @@ span.right {
 </style>
 </head>
 <body>
-<canvas id="c" width="{{CWIDTH}}" height="{{CHEIGHT}}"></canvas>
+<canvas id="c" width="<<<CWIDTH>>>" height="<<<CHEIGHT>>>"></canvas>
 
 <form>
 <div id="indicatordiv"><output id="indicator" size="30"></output></div>
@@ -90,17 +90,17 @@ The color of every enzyme/species combination indicates the best e-value of the 
 
 <script type="text/javascript">
 'use strict';
-const taxa = {{TAXA}};
+const taxa = <<<TAXA>>>;
 
 // alphabetically
-const adata = {{ADATA}};
-const aproteins = {{APROTEINS}};
+const adata = <<<ADATA>>>;
+const aproteins = <<<APROTEINS>>>;
 const acluster = [];
 
 // clustered
-const cdata = {{CDATA}};
-const cproteins = {{CPROTEINS}};
-const ccluster = {{CLUSTER}};
+const cdata = <<<CDATA>>>;
+const cproteins = <<<CPROTEINS>>>;
+const ccluster = <<<CLUSTER>>>;
 
 let data = cdata;
 let proteins = cproteins;

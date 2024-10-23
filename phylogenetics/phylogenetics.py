@@ -206,7 +206,7 @@ def combine_parsed_results(parsed_results, max_evalue, min_length):
 				if float(lline[4]) <= max_evalue and int(lline[5]) >= min_length:
 					results.append(line.rstrip())
 
-	return '\n'.join(results)
+	return results
 
 
 def table_for_interactive_heatmaps(parsed_results, TF):
@@ -415,7 +415,7 @@ def make_histogram(combined_table, seed_length, width=12, height=6, colormap=Non
 	if colormap is None:
 		colormap = plt.cm.get_cmap('rainbow')
 
-	values = np.loadtxt(combined_table, dtype=np.int, comments=None,
+	values = np.loadtxt(combined_table, dtype=int, comments=None,
 		delimiter='\t', skiprows=1, usecols=(5,))
 
 	min_value = np.amin(values)
@@ -459,6 +459,8 @@ total seeds: {len(seeds)}'''
 	plt.close()
 	fig = plt.figure(1, figsize=(width, height))
 	axis = fig.add_subplot(1,1,1)
+	if values.size == 1:
+		values = [values]
 	_, bins, patches = axis.hist(values, bins=bins)
 
 	# The following block is to color the bars
@@ -488,7 +490,7 @@ def show_blast_mapping(blast_result_file, query_length):
 
 	fnt = ImageFont.load_default()
 
-	counters = [np.zeros(query_length, np.int) for x in range(6)]
+	counters = [np.zeros(query_length, int) for x in range(6)]
 	num_hsps = [0] * 6
 
 	with open(blast_result_file) as blast_file_pointer:
@@ -517,7 +519,7 @@ def show_blast_mapping(blast_result_file, query_length):
 	counters = [
 		counters[n] / max_e[n]
 		if max_e[n] != 0
-		else np.ones(query_length, np.int)
+		else np.ones(query_length, int)
 		for n in range(6)
 	]
 
