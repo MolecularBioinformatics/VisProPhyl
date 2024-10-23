@@ -99,3 +99,5 @@ There are some utility scripts that are only on Github and not downloaded by `pi
 `lineage_value.py` gives an overview about how present given seeds are along a phylogenetic lineage. If you, for example, given human (taxonomy id 9606) as target, it will show, how well the seeds are found in Hominidae, Simiiformes, Primates, Mammalia, etc.
 
 `static_heatmap.py` is similar to the `intheat` step in `taxovis`. As the name says, it is not interactive, but can be used as a possible starting image for publication.
+
+`sample_taxids.py` is a helper library that reads in list of NCBI taxonomic ids and a sample size and returns randomly sampled taxids. This can be used to randomly sample organisms for the taxovis heatmap. Make sure to add your email address first!

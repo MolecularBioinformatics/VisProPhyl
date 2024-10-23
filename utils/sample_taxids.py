@@ -8,11 +8,51 @@ Returns randomly sampled taxids.
 Used to randomly sample orgs for taxovis heatmap.
 """
 
-from pathlib import Path
-import argparse
 from random import sample
 
-from get_taxinfo_from_id import *
+from Bio import Entrez
+
+## set your Entrez email
+Entrez.email = "your.email@example.com"
+
+if Entrez.email == "your.email@example.com":
+    import sys
+    print("Please change your email address in utils/get_taxinfo_from_id.py line 16!")
+    sys.exit(1)
+
+
+def query_ncbi(taxid, database='taxonomy'):
+    """
+    Submits query via Entrez to NCBI
+    Returns record storing results
+    
+    :param taxid: int
+    :param database: str
+
+    :returns: result record
+    """
+    handle = Entrez.efetch(db=database, id=str(taxid), retmode='xml')
+    record = Entrez.read(handle)
+    handle.close()
+
+    if not record:
+        raise ValueError(f'Could not find info for taxid {taxid}.')
+    return record
+
+
+def get_str_details(entrezrec_obj, tag='ScientificName'):
+    """
+    Returns specified description of organism
+    from Entrez record object
+
+    tag = 'ScientificName', 'Lineage', 'TaxId'
+
+    :param entrezrec_obj: Bio.Entrez.Parser.ListElement
+    :returns: Bio.Entrez.Parser.StringElement
+    """
+    attr = entrezrec_obj[0][tag]
+    return attr
+
 
 COLORSDICT = {'C0':'00cc00',
              'C1':'cc0000',
