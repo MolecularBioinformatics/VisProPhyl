@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 '''
-This is the command line interface for phylogenetics. It is not supposed
+This is the command line interface for ProTaxoVis. It is not supposed
 to be imported.
 '''
 
@@ -15,7 +15,7 @@ import pkg_resources
 import matplotlib.pyplot as plt
 from taxfinder import TaxFinder
 
-import phylogenetics as phylo
+import protaxovis
 
 
 TF = None
@@ -272,31 +272,31 @@ def init():
 
 	if not os.path.isfile('.gitignore'):
 		with open('.gitignore', 'wb') as out:
-			out.write(pkg_resources.resource_string('phylogenetics', 'templates/gitignore'))
+			out.write(pkg_resources.resource_string('protaxovis', 'templates/gitignore.tpl'))
 
 	if not os.path.isfile('limits.txt'):
 		with open('limits.txt', 'wb') as out:
-			out.write(pkg_resources.resource_string('phylogenetics', 'templates/limits.txt'))
+			out.write(pkg_resources.resource_string('protaxovis', 'templates/limits.txt.tpl'))
 
 	if not os.path.isfile('proteinlist.txt'):
 		with open('proteinlist.txt', 'wb') as out:
-			out.write(pkg_resources.resource_string('phylogenetics', 'templates/proteinlist.txt'))
+			out.write(pkg_resources.resource_string('protaxovis', 'templates/proteinlist.txt.tpl'))
 
 	if not os.path.isfile('tree_config.txt'):
 		with open('tree_config.txt', 'wb') as out:
-			out.write(pkg_resources.resource_string('phylogenetics', 'templates/tree_config.txt'))
+			out.write(pkg_resources.resource_string('protaxovis', 'templates/tree_config.txt.tpl'))
 
 	if not os.path.isfile('tree_to_prune.txt'):
 		with open('tree_to_prune.txt', 'wb') as out:
-			out.write(pkg_resources.resource_string('phylogenetics', 'templates/tree_to_prune.txt'))
+			out.write(pkg_resources.resource_string('protaxovis', 'templates/tree_to_prune.txt.tpl'))
 
 	if not os.path.isfile('heatmap_config.txt'):
 		with open('heatmap_config.txt', 'wb') as out:
-			out.write(pkg_resources.resource_string('phylogenetics', 'templates/heatmap_config.txt'))
+			out.write(pkg_resources.resource_string('protaxovis', 'templates/heatmap_config.txt.tpl'))
 
 	if not os.path.isfile('heatmap_template.html'):
 		with open('heatmap_template.html', 'wb') as out:
-			template = pkg_resources.resource_string('phylogenetics', 'templates/heatmap_template.html')
+			template = pkg_resources.resource_string('protaxovis', 'templates/heatmap_template.html.tpl')
 			template = template.replace(b'{', b'{{').replace(b'}', b'}}').replace(b'<<<', b'{').replace(b'>>>', b'}')
 			out.write(template)
 
@@ -319,7 +319,7 @@ def run_blast():
 	for i, filename in enumerate(file_list):
 		print(outstring.format(i+1, len(file_list), filename))
 		outfilename = f'blastresults/{_get_basename(filename)}.xml'
-		phylo.run_blastp(filename, outfilename, blastdb)
+		protaxovis.run_blastp(filename, outfilename, blastdb)
 
 
 def parse_blast_results(to_parse = None, to_exclude=None):
@@ -358,7 +358,7 @@ def parse_blast_results(to_parse = None, to_exclude=None):
 	for i, filename in enumerate(to_parse):
 		basename = _get_basename(filename)
 		print(outstring.format(i+1, len(to_parse), basename), end='\r')
-		parsed_result = phylo.parse_blast_result(filename, TF = TF, top = 0, exclude=to_exclude)
+		parsed_result = protaxovis.parse_blast_result(filename, TF = TF, top = 0, exclude=to_exclude)
 		if not parsed_result:
 			print(f'\nThe file {filename} did not yield any results.', file=sys.stderr)
 
@@ -388,7 +388,7 @@ def combine_parsed_results():
 		except KeyError:
 			max_evalue, min_length = limits['default']
 
-		combined = phylo.combine_parsed_results(proteins[protein], max_evalue, min_length)
+		combined = protaxovis.combine_parsed_results(proteins[protein], max_evalue, min_length)
 
 		if len(combined) > 1:
 			open(outfn, 'w').write('\n'.join(combined))
@@ -411,7 +411,7 @@ def tables_for_interactive_heatmap():
 	for protein in sorted(proteins):
 		print(protein.ljust(50), end='\r')
 
-		entries = phylo.table_for_interactive_heatmaps(proteins[protein], TF)
+		entries = protaxovis.table_for_interactive_heatmaps(proteins[protein], TF)
 
 		with open(f'interactivetables/{protein}.tsv', 'w') as outfile:
 			for entry in sorted(entries):
@@ -437,7 +437,7 @@ def unique_names():
 	total_taxids = set()
 
 	for filename in CR.get_protein_names():
-		names, taxids = phylo.unique_names_and_taxids(f'combinedtables/{filename}.tsv')
+		names, taxids = protaxovis.unique_names_and_taxids(f'combinedtables/{filename}.tsv')
 
 		with open(f'names/{filename}.names', 'w') as outfile:
 			for name in names:
@@ -471,7 +471,7 @@ def make_newick():
 
 	os.makedirs('trees', exist_ok=True)
 
-	sanitizer = phylo.NodeSanitizer()
+	sanitizer = protaxovis.NodeSanitizer()
 
 	for filename in todo:
 		if not os.path.isfile(filename) or os.path.getsize(filename) == 0:
@@ -479,7 +479,7 @@ def make_newick():
 			print('    Check for warnings about empty results before this error.', file=sys.stderr)
 			sys.exit(1)
 		outfn = f'trees/{_get_basename(filename)}.tre'
-		newick = phylo.make_newick(filename, sanitizer, TF)
+		newick = protaxovis.make_newick(filename, sanitizer, TF)
 
 		open(outfn, 'w').write(newick)
 
@@ -501,7 +501,7 @@ def tree_attributes():
 
 	master_tree = open('trees/general.tre').read()
 
-	keys, attributes = phylo.get_keys_and_attributes(proteinlist, filenames, master_tree)
+	keys, attributes = protaxovis.get_keys_and_attributes(proteinlist, filenames, master_tree)
 
 	with open('attributes.txt', 'w') as out:
 		for key in sorted(keys):
@@ -541,7 +541,7 @@ def make_histograms():
 		infile = f'combinedtables/{protein}.tsv'
 		print(f'Histogram: {protein:<50}', end='\r')
 
-		fig = phylo.make_histogram(infile, seed_lengths[protein], colormap=colormap)
+		fig = protaxovis.make_histogram(infile, seed_lengths[protein], colormap=colormap)
 
 		fig.savefig(f'histograms/{protein}.png')
 
@@ -569,7 +569,7 @@ def show_blast_mapping():
 
 		filename = f'blastresults/{proteinname}.xml'
 
-		image = phylo.show_blast_mapping(filename, query_length)
+		image = protaxovis.show_blast_mapping(filename, query_length)
 
 		image.save(f'blastmappings/{proteinname}.png')
 
@@ -588,7 +588,7 @@ def similarity_matrix(delimiter=','):
 	names = {name: f'combinedtables/{name}.tsv' for name in CR.get_protein_names()}
 	sorted_names = sorted(names)
 
-	res = phylo.similarity_matrix(names)
+	res = protaxovis.similarity_matrix(names)
 
 	with open('matrix.csv', 'w') as out:
 		out.write(f'{delimiter}{delimiter.join(sorted_names)}\n')
@@ -656,7 +656,7 @@ def int_heatmap():
 					best = evalue
 			matrix[i][pos] = best
 
-	html = phylo.interactive_heatmap(matrix, tick_taxa, tick_proteins, colors, template, method)
+	html = protaxovis.interactive_heatmap(matrix, tick_taxa, tick_proteins, colors, template, method)
 
 	open('heatmap.html', 'w').write(html)
 
@@ -725,7 +725,7 @@ def main():
 
 	parser = argparse.ArgumentParser(
 		description='This module provides you with tools to run '
-		'phylogenetic analyses. Exactly one argument must be given.')
+		'analyses. Exactly one argument must be given.')
 
 	parser.add_argument('-l', '--list', action='store_true',
 		help='Shows the whole workflow with information and exits')

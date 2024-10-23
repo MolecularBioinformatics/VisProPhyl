@@ -5,7 +5,7 @@ sample_taxids.py
 Reads in list of NCBI taxonomic ids and a sample size.
 Returns randomly sampled taxids.
 
-Used to randomly sample orgs for phylo heatmap.
+Used to randomly sample orgs for taxovis heatmap.
 """
 
 from pathlib import Path
@@ -129,7 +129,7 @@ def sample_taxids(taxidfile, pathtoconfigfile, samplesize=50):
     Reads in list of taxids. Queries them on NCBI
     via Entrez. 
     Takes a random sample of ids based on samplesize.
-    Writes out new heatmap config file for step 9 of phylo analysis.
+    Writes out new heatmap config file for step 9 of taxovis analysis.
 
     :param taxidfile: pathlib.PosixPath
     :param pathtoconfigfile: pathlib.PosixPath

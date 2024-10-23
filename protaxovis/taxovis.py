@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 '''
-This is the module for phylogenetics. This can be imported. If you want
+This is the module for protaxovis. This can be imported. If you want
 to use it via the command line, see cli.py.
 '''
 
@@ -282,7 +282,7 @@ def make_newick(filename, sanitizer, TF):
 
 	:param filename: Filename of a file with one taxonomy id per line of
 		the taxa to include in the tree
-	:param sanitizer: Instance of phylogenetics.NodeSanitizer
+	:param sanitizer: Instance of protaxovis.NodeSanitizer
 	:param TF: Instance of taxfinder.TaxFinder
 	:returns: String with the Newick representation of the tree
 	'''

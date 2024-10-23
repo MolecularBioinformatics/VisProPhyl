@@ -12,7 +12,7 @@ try:
 except ImportError:
 	pass
 
-import phylogenetics as phylo
+import protaxovis
 
 
 def main():
@@ -73,13 +73,13 @@ def main():
 		'unifying subspecies will not work.', file=logfile)
 
 	# Get the relevant entries based on evalue cutoff
-	entries = phylo.get_entries_from_blast_result(args.xml, args.evalue, TF)
+	entries = protaxovis.get_entries_from_blast_result(args.xml, args.evalue, TF)
 
 	# Download the sequences
 	if args.protein:
-		fasta = phylo.download_protein_sequences(entries, mail=mail, title=args.title)
+		fasta = protaxovis.download_protein_sequences(entries, mail=mail, title=args.title)
 	else:
-		fasta = phylo.download_nucleotide_sequences(entries, mail=mail, title=args.title, strip=args.strip)
+		fasta = protaxovis.download_nucleotide_sequences(entries, mail=mail, title=args.title, strip=args.strip)
 
 	# And save the sequences
 	if args.outfile:

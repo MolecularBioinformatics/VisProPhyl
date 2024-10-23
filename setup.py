@@ -6,23 +6,23 @@ import setuptools
 long_description = open('README.md').read()
 
 version = re.search(r'__version__\s*=\s*[\'"]([^\'"]*)[\'"]',
-                    open('phylogenetics/__init__.py').read()).group(1)
+                    open('protaxovis/__init__.py').read()).group(1)
 
 setuptools.setup(
-    name='VisProPhyl',
+    name='ProTaxoVis',
     version=version,
     author='Mathias Bockwoldt',
     author_email='mathias.bockwoldt@gmail.com',
-    description='Map Blast results on a common-knowledge phylogenetic tree',
+    description='Map Blast results on a common-knowledge taxonomix (phylogenetic) tree',
     long_description=long_description,
     long_description_content_type='text/markdown',
-    url='https://github.com/MolecularBioinformatics/VisProPhyl',
+    url='https://github.com/MolecularBioinformatics/ProTaxoVis',
     packages=setuptools.find_packages(),
-	package_data = {'phylogenetics': ['templates/*']},
+	package_data = {'protaxovis': ['templates/*']},
     entry_points={'console_scripts': [
-                                    'phylogenetics = phylogenetics.cli:main',
-                                    'phylotree = phylogenetics.phylotree:main',
-                                    'blast2fasta = phylogenetics.blast2fasta:main'
+                                    'taxovis = protaxovis.cli:main',
+                                    'taxotree = protaxovis.taxotree:main',
+                                    'blast2fasta = protaxovis.blast2fasta:main'
                                     ]},
     install_requires=[
         'PyQt5 >= 5.11.3, < 6',

@@ -3,7 +3,7 @@
 '''
 This script is meant to be changed to fit your needs.
 It will write a static heatmap as svg to STDOUT.
-Run in a folder, where a whole Phylogenetics run is finished like this:
+Run in a folder, where a whole ProTaxoVis run is finished like this:
 $ python3 static_heatmap.py > heatmap.svg
 '''
 
