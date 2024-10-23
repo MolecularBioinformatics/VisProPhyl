@@ -51,6 +51,9 @@ This package consists of four command line tools and one importable Python modul
 Workflow
 --------
 
+Example data to run with can be downloaded from https://github.com/MolecularBioinformatics/ProTaxoVis-examples
+This data includes the results of a blast run against `nr` and has config files ready, allowing you to skip steps 2, 3, and 5 of the workflow below.
+
 A typical workflow is described in (TODO: Our paper) and can be summed up to these steps:
 
 1. Create a folder for your project. Open a terminal/shell in this folder and run `taxovis --init`.
