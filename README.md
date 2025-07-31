@@ -5,7 +5,7 @@ This package contains tools to map BLAST results on the NCBI taxonomy phylogenet
 
 If you used this tool in your work, please cite:
 
-> TODO: Citation of our paper.
+> Hsieh, YC., Bockwoldt, M. & Heiland, I. ProTaxoVis—protein taxonomic visualisation of presence. BMC Bioinformatics 26, 128 (2025). https://doi.org/10.1186/s12859-025-06146-9
 
 
 Installation
